@@ -24,6 +24,12 @@ class Enrollment extends Model
     // Status constants
     const STATUS_ACTIVE = 'Active';
     const STATUS_INACTIVE = 'Inactive';
+    const STATUS_CANCELLED = 'Cancelled';
+    const STATUS_REFUNDED = 'Refunded';
+    const STATUS_REFUND_REQUESTED = 'Refund Requested';
+
+    // Refund Status
+    const PAYMENT_STATUS_REFUNDED = 'Refunded';
 
     protected $fillable = [
         'student_id',
@@ -34,16 +40,25 @@ class Enrollment extends Model
         'status',
         'progress',
         'completion_date',
+        'expiry_date',
         'notes',
         'transaction_id',
         'amount_paid',
+        'refund_id',
+        'refund_amount',
+        'refunded_at',
+        'refund_count',
     ];
 
     protected $casts = [
         'enrollment_date' => 'datetime',
         'completion_date' => 'datetime',
+        'expiry_date' => 'datetime',
+        'refunded_at' => 'datetime',
         'progress' => 'decimal:2',
         'amount_paid' => 'decimal:2',
+        'refund_amount' => 'decimal:2',
+        'refund_count' => 'integer',
     ];
 
     // Relationships
@@ -81,6 +96,34 @@ class Enrollment extends Model
     public function isPending(): bool
     {
         return $this->payment_status === self::PAYMENT_STATUS_PENDING;
+    }
+
+    public function isExpired(): bool
+    {
+        return $this->expiry_date && $this->expiry_date->isPast();
+    }
+
+    public function resetForReEnrollment(string $reason = ''): void
+    {
+        // Clear lesson progress
+        $this->lessonProgress()->delete();
+
+        // Clear quiz attempts
+        $this->quizAttempts()->delete();
+
+        // Reset enrollment fields - status will be set by caller
+        $this->updateQuietly([
+            'completion_date' => null,
+            'progress'        => 0,
+            'expiry_date'     => null,
+            'transaction_id'  => null,
+            'notes'           => ($this->notes ? $this->notes . "\n" : '') .
+                                 'Re-enrolled on ' . now()->format('Y-m-d') .
+                                 ($reason ? '. Reason: ' . $reason : ''),
+        ]);
+
+        // Refresh model to avoid stale data
+        $this->refresh();
     }
 
     public function lessonProgress(): HasMany
@@ -124,7 +167,7 @@ class Enrollment extends Model
         }
         
         return $this->quizAttempts()
-            ->where('lesson_id', $finalQuiz->id)
+            ->where('quiz_id', $finalQuiz->id)
             ->where('is_passed', true)
             ->exists();
     }
@@ -143,7 +186,7 @@ class Enrollment extends Model
         }
         
         return $this->quizAttempts()
-            ->where('lesson_id', $finalQuiz->id)
+            ->where('quiz_id', $finalQuiz->id)
             ->where('is_passed', true)
             ->orderBy('percentage', 'desc')
             ->first();
@@ -179,10 +222,20 @@ class Enrollment extends Model
     // Payment methods
     public function markAsPaid(string $transactionId, float $amount): bool
     {
+        $this->loadMissing('course'); // Ensure course relationship is loaded
+
         $this->payment_status = self::PAYMENT_STATUS_COMPLETED;
         $this->transaction_id = $transactionId;
         $this->amount_paid = $amount;
         $this->status = self::STATUS_ACTIVE;
+        
+        // Set expiry date if course has duration
+        if ($this->course && $this->course->access_duration > 0) {
+            $this->expiry_date = now()->addDays($this->course->access_duration);
+        } else {
+            $this->expiry_date = null; // Explicitly set to null for lifetime access
+        }
+
         return $this->save();
     }
 
@@ -201,13 +254,19 @@ class Enrollment extends Model
     // Validation methods
     public static function canEnroll(int $studentId, int $courseId): bool
     {
-        return !static::where('student_id', $studentId)
+        $existing = static::where('student_id', $studentId)
             ->where('course_id', $courseId)
-            ->exists();
+            ->first();
+
+        if (!$existing) return true;
+
+        return $existing->isExpired() ||
+               in_array($existing->status, [self::STATUS_CANCELLED, self::STATUS_REFUNDED, self::STATUS_INACTIVE]);
     }
 
     public static function createEnrollment(int $studentId, int $courseId, float $coursePrice = 0): self
     {
+        $course = Course::findOrFail($courseId);
         $enrollment = new static([
             'student_id' => $studentId,
             'course_id' => $courseId,
@@ -223,6 +282,11 @@ class Enrollment extends Model
             $enrollment->payment_status = self::PAYMENT_STATUS_FREE;
             $enrollment->payment_method = self::METHOD_FREE;
             $enrollment->status = self::STATUS_ACTIVE;
+            
+            // Set expiry date if course has duration
+            if ($course->access_duration > 0) {
+                $enrollment->expiry_date = now()->addDays($course->access_duration);
+            }
         }
 
         $enrollment->save();
@@ -239,6 +303,9 @@ class Enrollment extends Model
         return match ($this->status) {
             self::STATUS_ACTIVE => 'Active',
             self::STATUS_INACTIVE => 'Inactive',
+            self::STATUS_CANCELLED => 'Cancelled',
+            self::STATUS_REFUNDED => 'Refunded',
+            self::STATUS_REFUND_REQUESTED => 'Refund Requested',
             default => ucfirst((string) $this->status),
         };
     }
@@ -252,6 +319,9 @@ class Enrollment extends Model
         return match ($this->status) {
             self::STATUS_ACTIVE => 'green',
             self::STATUS_INACTIVE => 'gray',
+            self::STATUS_CANCELLED => 'red',
+            self::STATUS_REFUNDED => 'purple',
+            self::STATUS_REFUND_REQUESTED => 'orange',
             default => 'gray',
         };
     }
@@ -263,7 +333,6 @@ class Enrollment extends Model
             self::PAYMENT_STATUS_PENDING => 'Pending',
             self::PAYMENT_STATUS_COMPLETED => 'Completed',
             self::PAYMENT_STATUS_FAILED => 'Failed',
-            'refunded' => 'Refunded',
             default => ucfirst($this->payment_status),
         };
     }
@@ -275,7 +344,6 @@ class Enrollment extends Model
             self::PAYMENT_STATUS_PENDING => 'yellow',
             self::PAYMENT_STATUS_COMPLETED => 'green',
             self::PAYMENT_STATUS_FAILED => 'red',
-            'refunded' => 'orange',
             default => 'gray',
         };
     }

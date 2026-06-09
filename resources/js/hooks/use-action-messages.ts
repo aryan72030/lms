@@ -13,23 +13,9 @@ export type ActionMessageType =
     | 'move'
     | 'save'
     | 'cancel'
-    | 'test';
-
-const successLabels: Record<ActionMessageType, string> = {
-    create: 'created',
-    update: 'updated',
-    delete: 'deleted',
-    toggle: 'updated',
-    submit: 'submitted',
-    approve: 'approved',
-    reject: 'rejected',
-    archive: 'archived',
-    republish: 'republished',
-    move: 'updated',
-    save: 'saved',
-    cancel: 'cancelled',
-    test: 'completed',
-};
+    | 'test'
+    | 'grade'
+    | 'reopen';
 
 const actionLabels: Record<ActionMessageType, string> = {
     create: 'create',
@@ -45,17 +31,37 @@ const actionLabels: Record<ActionMessageType, string> = {
     save: 'save',
     cancel: 'cancel',
     test: 'complete',
+    grade: 'grade',
+    reopen: 'reopen',
 };
 
 export function useActionMessages(defaultSubject = 'Item') {
     const { showSuccess, showError, showInfo } = useNotification();
 
-    const success = (action: ActionMessageType, subject = defaultSubject, message?: string) => {
-        showSuccess(message ?? `${subject} ${successLabels[action]} successfully.`);
+    const success = (
+        action: ActionMessageType,
+        customMessage?: string,
+        subject = defaultSubject
+    ) => {
+        if (customMessage) {
+            showSuccess(customMessage);
+        } else {
+            const message = `${subject} ${actionLabels[action]}d successfully.`;
+            showSuccess(message);
+        }
     };
 
-    const error = (action: ActionMessageType, subject = defaultSubject, message?: string) => {
-        showError(message ?? `Failed to ${actionLabels[action]} ${subject.toLowerCase()}. Please try again.`);
+    const error = (
+        action: ActionMessageType,
+        customMessage?: string,
+        subject = defaultSubject
+    ) => {
+        if (customMessage) {
+            showError(customMessage);
+        } else {
+            const message = `Failed to ${actionLabels[action]} ${subject.toLowerCase()}. Please try again.`;
+            showError(message);
+        }
     };
 
     const info = (message: string, title?: string) => {

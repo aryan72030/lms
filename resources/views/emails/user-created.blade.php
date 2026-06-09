@@ -38,11 +38,11 @@
             
             <h3>What's Next?</h3>
             <ul>
-                @if($user->role === 'student')
+                @if($user->role === 'Student')
                     <li>Browse available courses</li>
                     <li>Enroll in courses that interest you</li>
                     <li>Track your learning progress</li>
-                @elseif($user->role === 'instructor')
+                @elseif($user->role === 'Instructor')
                     <li>Create and manage your courses</li>
                     <li>Upload lessons and materials</li>
                     <li>Track student progress</li>

@@ -42,19 +42,17 @@ export function NavFooter({
                                     </a>
                                 </SidebarMenuButton>
                             ) : (
-                            <SidebarMenuButton
-                                asChild
-                                className="text-neutral-600 hover:text-neutral-800 dark:text-neutral-300 dark:hover:text-neutral-100"
-                            >
-                                <a
-                                    href={toUrl(item.href)}
+                                <SidebarMenuButton
+                                    asChild
+                                    className="text-neutral-600 hover:text-neutral-800 dark:text-neutral-300 dark:hover:text-neutral-100"
                                 >
-                                    {item.icon && (
-                                        <item.icon className="h-5 w-5" />
-                                    )}
-                                    <span>{item.title}</span>
-                                </a>
-                            </SidebarMenuButton>
+                                    <a href={toUrl(item.href)}>
+                                        {item.icon && (
+                                            <item.icon className="h-5 w-5" />
+                                        )}
+                                        <span>{item.title}</span>
+                                    </a>
+                                </SidebarMenuButton>
                             )}
                         </SidebarMenuItem>
                     ))}

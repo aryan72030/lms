@@ -8,7 +8,7 @@ use App\Models\Enrollment;
 use App\Models\Course;
 use App\Models\LessonProgress;
 use App\Models\QuizAttempt;
-use App\Models\AssignmentSubmission;
+use App\Models\CourseAssignmentSubmission;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
@@ -47,8 +47,8 @@ class DashboardController extends Controller
             ->avg('percentage') ?? 0;
         
         // Get assignment statistics
-        $totalAssignmentsSubmitted = AssignmentSubmission::where('student_id', $studentId)
-            ->where('status', AssignmentSubmission::STATUS_SUBMITTED)
+        $totalAssignmentsSubmitted = CourseAssignmentSubmission::where('student_id', $studentId)
+            ->where('status', CourseAssignmentSubmission::STATUS_SUBMITTED)
             ->count();
         
         $stats = [
@@ -67,20 +67,32 @@ class DashboardController extends Controller
         // Get enrolled courses with progress
         $enrolled_courses = Enrollment::with(['course.instructor', 'course.category', 'course.lessons'])
             ->forStudent($studentId)
-            ->active()
+            ->whereIn('status', [Enrollment::STATUS_ACTIVE, Enrollment::STATUS_REFUNDED, Enrollment::STATUS_REFUND_REQUESTED])
             ->orderBy('created_at', 'desc')
             ->limit(5)
             ->get()
             ->map(function ($enrollment) {
                 $progressData = $enrollment->getProgressData();
                 
+                $status = 'Not Started';
+                if ($enrollment->status === Enrollment::STATUS_REFUNDED) {
+                    $status = 'Refunded';
+                } elseif ($enrollment->status === Enrollment::STATUS_REFUND_REQUESTED) {
+                    $status = 'Refund Requested';
+                } elseif ($enrollment->completion_date) {
+                    $status = 'Completed';
+                } elseif ($progressData['progress_percentage'] > 0) {
+                    $status = 'In Progress';
+                }
+                
                 return [
                     'id' => $enrollment->course->id,
+                    'enrollment_id' => $enrollment->id,
                     'title' => $enrollment->course->title,
                     'instructor_name' => $enrollment->course->instructor->name,
                     'category' => $enrollment->course->category->name,
                     'progress' => $progressData['progress_percentage'],
-                    'status' => $enrollment->completion_date ? 'Completed' : 'In Progress',
+                    'status' => $status,
                     'completed_lessons' => $progressData['completed_lessons'],
                     'total_lessons' => $progressData['total_lessons'],
                     'remaining_lessons' => $progressData['remaining_lessons'],
@@ -124,7 +136,7 @@ class DashboardController extends Controller
                 ];
             });
         
-        $recentAssignments = AssignmentSubmission::with(['lesson.course'])
+        $recentAssignments = CourseAssignmentSubmission::with(['assignment.course'])
             ->where('student_id', $studentId)
             ->whereNotNull('submitted_at')
             ->orderBy('submitted_at', 'desc')
@@ -133,12 +145,12 @@ class DashboardController extends Controller
             ->map(function ($submission) {
                 return [
                     'type' => 'assignment_submitted',
-                    'title' => 'Assignment: ' . $submission->lesson->title,
-                    'course_title' => $submission->lesson->course->title,
+                    'title' => 'Assignment: ' . $submission->assignment->title,
+                    'course_title' => $submission->assignment->course->title,
                     'date' => $submission->submitted_at->diffForHumans(),
                     'score' => $submission->percentage ? round($submission->percentage, 1) : null,
                     'icon' => 'FileText',
-                    'color' => $submission->isPassed() ? 'green' : ($submission->isGraded() ? 'red' : 'blue'),
+                    'color' => $submission->passed() ? 'green' : ($submission->isGraded() ? 'red' : 'blue'),
                 ];
             });
         

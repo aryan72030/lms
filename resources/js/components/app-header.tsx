@@ -1,5 +1,12 @@
 import { Link, usePage } from '@inertiajs/react';
-import { BookOpen, Folder, LayoutGrid, Menu, Search, Users } from 'lucide-react';
+import {
+    BookOpen,
+    Folder,
+    LayoutGrid,
+    Menu,
+    Search,
+    Users,
+} from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import AppLogoIcon from '@/components/app-logo-icon';
 import { Breadcrumbs } from '@/components/breadcrumbs';
@@ -40,20 +47,20 @@ type Props = {
 
 const getDashboardUrl = (user: any) => {
     if (!user) {
-return '/';
-}
-    
+        return '/';
+    }
+
     if (user.role === 'Admin') {
-return '/admin/dashboard';
-}
+        return '/admin/dashboard';
+    }
 
     if (user.role === 'Instructor') {
-return '/instructor/dashboard';
-}
+        return '/instructor/dashboard';
+    }
 
     if (user.role === 'Student') {
-return '/student/dashboard';
-}
+        return '/student/dashboard';
+    }
 
     return '/';
 };
@@ -67,7 +74,7 @@ const getMainNavItems = (user: any): NavItem[] => {
             icon: LayoutGrid,
         },
     ];
-    
+
     // Add admin-specific menu items
     if (user?.role === 'Admin') {
         items.push({
@@ -76,7 +83,7 @@ const getMainNavItems = (user: any): NavItem[] => {
             icon: Users,
         });
     }
-    
+
     return items;
 };
 
@@ -101,7 +108,7 @@ export function AppHeader({ breadcrumbs = [] }: Props) {
     const { auth } = page.props;
     const getInitials = useInitials();
     const { isCurrentUrl, whenCurrentUrl } = useCurrentUrl();
-    
+
     const dashboardUrl = getDashboardUrl(auth.user);
     const mainNavItems = getMainNavItems(auth.user);
 

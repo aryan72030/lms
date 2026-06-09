@@ -54,14 +54,20 @@ class HandleInertiaRequests extends Middleware
                     'name' => $user->name,
                     'email' => $user->email,
                     'role' => $user->role,
+                    'avatar' => null,
                     'email_verified_at' => $user->email_verified_at,
-                    // Role helper methods for frontend
                     'is_admin' => $user->isAdmin(),
                     'is_instructor' => $user->isInstructor(),
                     'is_student' => $user->isStudent(),
                 ] : null,
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
+            'flash' => [
+                'success' => $request->session()->get('success'),
+                'error' => $request->session()->get('error'),
+                'info' => $request->session()->get('info'),
+                'warning' => $request->session()->get('warning'),
+            ],
         ];
     }
 }

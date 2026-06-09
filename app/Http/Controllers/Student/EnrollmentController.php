@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Mail\CourseEnrollment;
 use App\Models\Enrollment;
 use App\Models\Course;
+use App\Models\CourseAssignmentSubmission;
 use App\Models\LessonProgress;
 use App\Models\Setting;
 use App\Services\PayPalService;
@@ -53,6 +54,9 @@ class EnrollmentController extends Controller
             if ($enrollment->course) {
                 $enrollment->course->thumbnail = $enrollment->course->thumbnail ? '/files/' . $enrollment->course->thumbnail : null;
             }
+            // Add expiry date and refund dates to response
+            $enrollment->expiry_date = $enrollment->expiry_date?->format('Y-m-d H:i:s');
+            $enrollment->refunded_at = $enrollment->refunded_at?->format('Y-m-d H:i:s');
             return $enrollment;
         });
 
@@ -73,12 +77,23 @@ class EnrollmentController extends Controller
 
         $course = Course::findOrFail($request->course_id);
 
+        // Check for max students limit
+        $maxStudents = (int) Setting::get('max_students_per_course', 0);
+        if ($maxStudents > 0) {
+            $currentStudents = Enrollment::where('course_id', $course->id)
+                ->where(function($q) {
+                    $q->where('status', Enrollment::STATUS_ACTIVE)
+                      ->orWhereNotNull('completion_date');
+                })->count();
+            
+            if ($currentStudents >= $maxStudents) {
+                return redirect()->back()->with('error', 'This course has reached its maximum student limit.');
+            }
+        }
+
         // Check if course is published
         if (!$course->isPublished()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'This course is not available for enrollment.',
-            ], 400);
+            return redirect()->back()->with('error', 'This course is not available for enrollment.');
         }
 
         // Check if student is already enrolled (Active/Completed)
@@ -87,18 +102,47 @@ class EnrollmentController extends Controller
             ->first();
 
         $alreadyCompleted = (bool) $existingEnrollment?->completion_date;
+        $isExpiredEnrollment = (bool) $existingEnrollment?->isExpired();
 
-        if ($existingEnrollment && ($existingEnrollment->status === Enrollment::STATUS_ACTIVE || $alreadyCompleted || $existingEnrollment->payment_status === Enrollment::PAYMENT_STATUS_COMPLETED)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'You are already enrolled in this course.',
-            ], 400);
+        // Block if Refund Requested is pending
+        if ($existingEnrollment && $existingEnrollment->status === Enrollment::STATUS_REFUND_REQUESTED) {
+            return redirect()->back()->with('error', 'Your refund request is pending. Please wait for admin review before re-enrolling.');
+        }
+
+        if (
+            $existingEnrollment &&
+            !$isExpiredEnrollment &&
+            !in_array($existingEnrollment->status, [Enrollment::STATUS_CANCELLED, Enrollment::STATUS_REFUNDED, Enrollment::STATUS_INACTIVE]) &&
+            (
+                $existingEnrollment->status === Enrollment::STATUS_ACTIVE ||
+                $alreadyCompleted ||
+                $existingEnrollment->payment_status === Enrollment::PAYMENT_STATUS_COMPLETED
+            )
+        ) {
+            return redirect()->back()->with('error', 'You are already enrolled in this course.');
         }
 
         // Create or reuse enrollment based on course price
         if ($course->price > 0) {
-            // Paid course - create or reuse pending enrollment
+            // Paid course - create or reuse enrollment
             if ($existingEnrollment && $existingEnrollment->payment_status === Enrollment::PAYMENT_STATUS_PENDING) {
+                $enrollment = $existingEnrollment;
+            } elseif ($existingEnrollment && (
+                $isExpiredEnrollment || 
+                in_array($existingEnrollment->status, [
+                    Enrollment::STATUS_REFUNDED, 
+                    Enrollment::STATUS_CANCELLED,
+                    Enrollment::STATUS_INACTIVE,
+                ])
+            )) {
+                $existingEnrollment->resetForReEnrollment('Re-enrolled after ' . $existingEnrollment->status);
+                $existingEnrollment->update([
+                    'payment_status' => Enrollment::PAYMENT_STATUS_PENDING,
+                    'payment_method' => Enrollment::METHOD_PAYPAL,
+                    'status'         => Enrollment::STATUS_INACTIVE,
+                    'amount_paid'    => $course->price,
+                ]);
+
                 $enrollment = $existingEnrollment;
             } else {
                 $enrollment = Enrollment::createEnrollment(Auth::id(), $course->id, $course->price);
@@ -115,19 +159,35 @@ class EnrollmentController extends Controller
                     $enrollment->delete();
                 }
                 
-                return redirect()->back()->with('error', 'Failed to create payment order. Please try again.');
+                $errorMessage = $paypalResult['error'] ?? 'Failed to create payment order. Please try again.';
+                return redirect()->back()->with('error', $errorMessage);
             }
         } else {
             // Free course - direct enrollment
-            if ($existingEnrollment) {
-                $enrollment = $existingEnrollment;
-                $enrollment->update([
+            if ($existingEnrollment && (
+                in_array($existingEnrollment->status, [
+                    Enrollment::STATUS_CANCELLED,
+                    Enrollment::STATUS_REFUNDED,
+                    Enrollment::STATUS_INACTIVE,
+                ]) || $isExpiredEnrollment
+            )) {
+                $expiryDate = $course->access_duration
+                    ? now()->addDays($course->access_duration)
+                    : null;
+
+                $existingEnrollment->resetForReEnrollment('Re-enrolled after ' . $existingEnrollment->status);
+                $existingEnrollment->update([
                     'payment_status' => Enrollment::PAYMENT_STATUS_FREE,
                     'payment_method' => Enrollment::METHOD_FREE,
-                    'status' => Enrollment::STATUS_ACTIVE,
+                    'status'         => Enrollment::STATUS_ACTIVE,
+                    'expiry_date'    => $expiryDate,
                 ]);
-            } else {
+
+                $enrollment = $existingEnrollment;
+            } elseif (!$existingEnrollment) {
                 $enrollment = Enrollment::createEnrollment(Auth::id(), $course->id, 0);
+            } else {
+                return redirect()->back()->with('error', 'You are already enrolled in this course.');
             }
             
             // Send enrollment confirmation email
@@ -153,10 +213,7 @@ class EnrollmentController extends Controller
      */
     public function show(Enrollment $enrollment)
     {
-        // Ensure student can only view their own enrollments
-        if ($enrollment->student_id !== Auth::id()) {
-            abort(403, 'Unauthorized access to enrollment.');
-        }
+        $this->authorize('view', $enrollment);
 
         // Prevent access if payment is pending
         if ($enrollment->payment_status === Enrollment::PAYMENT_STATUS_PENDING) {
@@ -164,12 +221,33 @@ class EnrollmentController extends Controller
                 ->with('error', 'Please complete your payment to access this course.');
         }
 
+        // Prevent access if enrollment is not active (e.g. Refunded, Cancelled, Inactive)
+        if (!$enrollment->isActive()) {
+            $statusMessage = match ($enrollment->status) {
+                Enrollment::STATUS_REFUNDED => 'Your enrollment has been refunded and access has been revoked.',
+                Enrollment::STATUS_CANCELLED => 'Your enrollment has been cancelled.',
+                Enrollment::STATUS_REFUND_REQUESTED => 'Your refund request is pending. Access is temporarily restricted.',
+                default => 'Your enrollment is currently inactive.',
+            };
+
+            return redirect()->route('student.enrollments.index')
+                ->with('error', $statusMessage);
+        }
+
+        if ($enrollment->isExpired()) {
+            return redirect()->route('student.enrollments.index')
+                ->with('error', 'Your access to this course has expired.');
+        }
+
         $enrollment->load([
             'course.instructor',
             'course.category',
             'course.lessons' => function ($query) {
                 $query->where('is_published', true)->orderBy('order');
-            }
+            },
+            'course.assignments' => function ($query) {
+                $query->where('is_published', true)->orderBy('order');
+            },
         ]);
         
         // Get lesson progress for this enrollment
@@ -178,12 +256,47 @@ class EnrollmentController extends Controller
             ->get()
             ->map(function ($progress) {
                 return [
-                    'lesson_id' => $progress->lesson_id,
+                    'lesson_id'    => $progress->lesson_id,
                     'is_completed' => $progress->is_completed,
                     'completed_at' => $progress->completed_at?->format('Y-m-d H:i:s'),
-                    'time_spent' => $progress->time_spent,
+                    'time_spent'   => $progress->time_spent,
                 ];
             });
+
+        // Get assignment submissions for this enrollment
+        $assignmentIds = $enrollment->course->assignments->pluck('id');
+        $submissions = CourseAssignmentSubmission::whereIn('course_assignment_id', $assignmentIds)
+            ->where('student_id', Auth::id())
+            ->get()
+            ->keyBy('course_assignment_id');
+
+        $assignments = $enrollment->course->assignments->map(function ($assignment) use ($enrollment, $submissions) {
+            $submission = $submissions->get($assignment->id);
+            $dueDate    = $assignment->dueDateFor($enrollment);
+            return [
+                'id'           => $assignment->id,
+                'title'        => $assignment->title,
+                'instructions' => $assignment->instructions,
+                'max_score'    => $assignment->max_score,
+                'passing_score'=> $assignment->passing_score,
+                'due_days'     => $assignment->due_days,
+                'due_date'     => $dueDate->format('M d, Y'),
+                'is_overdue'   => now()->isAfter($dueDate),
+                'submission'   => $submission ? [
+                    'id'              => $submission->id,
+                    'status'          => $submission->status,
+                    'submission_text' => $submission->submission_text,
+                    'file_path'       => $submission->file_path,
+                    'file_original_name' => $submission->file_original_name,
+                    'score'           => $submission->score,
+                    'percentage'      => $submission->percentage,
+                    'feedback'        => $submission->feedback,
+                    'submitted_at'    => $submission->submitted_at?->format('M d, Y H:i'),
+                    'graded_at'       => $submission->graded_at?->format('M d, Y H:i'),
+                    'is_passed'       => $submission->isGraded() ? $submission->isPassed() : null,
+                ] : null,
+            ];
+        })->values();
         
         // Update enrollment progress
         $progressData = $enrollment->getProgressData();
@@ -191,7 +304,8 @@ class EnrollmentController extends Controller
         return Inertia::render('student/enrollments/show', [
             'enrollment' => [
                 'id' => $enrollment->id,
-                'enrollment_date' => $enrollment->enrollment_date?->format('Y-m-d H:i:s'),
+                'enrollment_date' => $enrollment->enrollment_date->format('Y-m-d H:i:s'),
+                'expiry_date' => $enrollment->expiry_date?->format('Y-m-d H:i:s'),
                 'payment_status' => $enrollment->payment_status,
                 'status' => $enrollment->status,
                 'progress' => $progressData['progress_percentage'],
@@ -211,23 +325,24 @@ class EnrollmentController extends Controller
                         'id' => $enrollment->course->category->id,
                         'name' => $enrollment->course->category->name,
                     ],
-                    'lessons' => $enrollment->course->lessons->map(fn ($lesson) => [
-                        'id' => $lesson->id,
-                        'title' => $lesson->title,
-                        'description' => $lesson->description,
-                        'type' => $lesson->type,
-                        'order' => $lesson->order,
-                        'estimated_duration' => $lesson->estimated_duration,
-                        'duration_display' => $lesson->duration_display,
-                        'text_content' => $lesson->text_content,
-                        'video_url' => $lesson->video_url,
-                        'video_duration' => $lesson->video_duration,
-                        'quiz_data' => $lesson->quiz_data,
-                        'assignment_data' => $lesson->assignment_data,
-                    ])->values(),
+                    'lessons' => $enrollment->course->lessons->map(function ($lesson) {
+                        return [
+                            'id'                 => $lesson->id,
+                            'title'              => $lesson->title,
+                            'description'        => $lesson->description,
+                            'type'               => $lesson->type,
+                            'order'              => $lesson->order,
+                            'estimated_duration' => $lesson->estimated_duration,
+                            'duration_display'   => $lesson->duration_display,
+                            'text_content'       => $lesson->text_content,
+                            'video_url'          => $lesson->video_url,
+                            'video_duration'     => $lesson->video_duration,
+                        ];
+                    })->values(),
                 ],
             ],
             'lessonProgress' => $lessonProgress,
+            'assignments'    => $assignments,
         ]);
     }
 
@@ -236,10 +351,7 @@ class EnrollmentController extends Controller
      */
     public function updateProgress(Request $request, Enrollment $enrollment)
     {
-        // Ensure student can only update their own enrollments
-        if ($enrollment->student_id !== Auth::id()) {
-            abort(403, 'Unauthorized access to enrollment.');
-        }
+        $this->authorize('update', $enrollment);
 
         $request->validate([
             'progress' => 'required|numeric|min:0|max:100',
@@ -256,24 +368,54 @@ class EnrollmentController extends Controller
     }
 
     /**
-     * Cancel enrollment (for pending payments only)
+     * Request a refund for an enrollment
+     */
+    public function requestRefund(Request $request, Enrollment $enrollment)
+    {
+        $this->authorize('update', $enrollment);
+
+        // Validate reason
+        $request->validate([
+            'reason' => 'required|string|max:1000',
+        ]);
+
+        // Only allow refund requests for active, paid enrollments
+        if ($enrollment->status !== Enrollment::STATUS_ACTIVE || $enrollment->payment_status !== Enrollment::PAYMENT_STATUS_COMPLETED) {
+            return redirect()->back()->with('error', 'Only active paid enrollments can be refunded.');
+        }
+
+        $reason = $request->reason;
+        $enrollment->update([
+            'status' => Enrollment::STATUS_REFUND_REQUESTED,
+            'notes' => ($enrollment->notes ? $enrollment->notes . "\n" : "") . "Refund requested on " . now()->format('Y-m-d') . ". Reason: " . $reason,
+        ]);
+
+        return redirect()->back()->with('success', 'Refund request submitted successfully. The administrator will review it soon.');
+    }
+
+    /**
+     * Cancel enrollment
      */
     public function cancel(Enrollment $enrollment)
     {
-        // Ensure student can only cancel their own enrollments
-        if ($enrollment->student_id !== Auth::id()) {
-            abort(403, 'Unauthorized access to enrollment.');
+        $this->authorize('update', $enrollment);
+
+        // Don't allow cancelling paid courses via this method
+        if ($enrollment->course->price > 0) {
+            return redirect()->back()->with('error', 'Paid enrollments cannot be cancelled. Please request a refund instead if it was already paid.');
         }
 
-        // Only allow cancellation of pending enrollments
-        if (!$enrollment->isPending()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Only pending enrollments can be cancelled.',
-            ], 400);
+        // If it's a pending enrollment, just delete it
+        if ($enrollment->isPending()) {
+            $enrollment->delete();
+            return redirect()->back()->with('success', 'Pending enrollment cancelled successfully.');
         }
 
-        $enrollment->delete();
+        // For active/free enrollments, just mark as cancelled
+        $enrollment->update([
+            'status' => Enrollment::STATUS_CANCELLED,
+            'notes' => ($enrollment->notes ? $enrollment->notes . "\n" : "") . "Cancelled by student on " . now()->format('Y-m-d'),
+        ]);
 
         return redirect()->back()->with('success', 'Enrollment cancelled successfully.');
     }
@@ -315,10 +457,19 @@ class EnrollmentController extends Controller
             ->where('course_id', $courseId)
             ->first();
 
-        // can_enroll is true if no enrollment exists OR if it's not active/completed
-        $canEnroll = !$existingEnrollment || 
-                    ($existingEnrollment->status !== Enrollment::STATUS_ACTIVE && 
+        $isExpiredEnrollment = (bool) $existingEnrollment?->isExpired();
+
+        // can_enroll is true if no enrollment exists, or if the previous one expired,
+        // or if it's otherwise not an active/completed enrollment.
+        $canEnroll = !$existingEnrollment ||
+                    $isExpiredEnrollment ||
+                    ($existingEnrollment->status !== Enrollment::STATUS_ACTIVE &&
                      $existingEnrollment->payment_status !== Enrollment::PAYMENT_STATUS_COMPLETED);
+
+        if ($existingEnrollment) {
+            $existingEnrollment->is_expired = $isExpiredEnrollment;
+            $existingEnrollment->expiry_date = $existingEnrollment->expiry_date?->format('Y-m-d H:i:s');
+        }
 
         return response()->json([
             'can_enroll' => $canEnroll,

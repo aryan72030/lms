@@ -190,6 +190,7 @@ class Setting extends Model
                 'user_registration' => static::get('email_user_registration', true),
                 'course_enrollment' => static::get('email_course_enrollment', true),
                 'payment_confirmation' => static::get('email_payment_confirmation', true),
+                'payment_refund' => static::get('email_payment_refund', true),
                 'course_completion' => static::get('email_course_completion', true),
                 'password_reset' => static::get('email_password_reset', true),
                 'instructor_notifications' => static::get('email_instructor_notifications', true),

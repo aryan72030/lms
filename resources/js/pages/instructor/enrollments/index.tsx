@@ -1,12 +1,37 @@
-import { Head, Link, router } from '@inertiajs/react';
-import { Search, Eye, Users, BookOpen, CheckCircle, DollarSign } from 'lucide-react';
-import React, { useState } from 'react';
+import { Head, router } from '@inertiajs/react';
+import {
+    Eye,
+    Search,
+    Filter,
+    CheckCircle,
+    Circle,
+    User as UserIcon,
+    BookOpen,
+} from 'lucide-react';
+import { useState } from 'react';
+import axios from 'axios';
 import { ActionButton } from '@/components/ui/action-button';
 import { ActionButtonGroup } from '@/components/ui/action-button-group';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import { useActionMessages } from '@/hooks/use-action-messages';
 import AppLayout from '@/layouts/app-layout';
 
 interface Student {
@@ -42,11 +67,10 @@ interface Props {
         data: Enrollment[];
         links: any[];
         meta: any;
+        total?: number;
     };
-    courses: Array<{
-        id: number;
-        title: string;
-    }>;
+    enrollments_total?: number;
+    courses: Array<{ id: number; title: string }>;
     stats: {
         total_enrollments: number;
         active_enrollments: number;
@@ -63,71 +87,128 @@ interface Props {
     paymentStatuses: Record<string, string>;
 }
 
-export default function InstructorEnrollmentsIndex({ 
-    enrollments, 
-    courses, 
-    stats, 
-    filters, 
-    statuses, 
-    paymentStatuses 
+export default function InstructorEnrollmentsIndex({
+    enrollments,
+    enrollments_total,
+    courses,
+    stats,
+    filters,
+    statuses,
+    paymentStatuses,
 }: Props) {
+    const total = enrollments.meta?.total ?? enrollments.total ?? enrollments_total ?? stats.total_enrollments ?? 0;
+
     const [search, setSearch] = useState(filters.search || '');
-    const [courseFilter, setCourseFilter] = useState(filters.course_id || '');
-    const [statusFilter, setStatusFilter] = useState(filters.status || '');
-    const [paymentStatusFilter, setPaymentStatusFilter] = useState(filters.payment_status || '');
+    const [courseFilter, setCourseFilter] = useState(filters.course_id || 'all');
+    const [statusFilter, setStatusFilter] = useState(filters.status || 'all');
+    const [paymentStatusFilter, setPaymentStatusFilter] = useState(filters.payment_status || 'all');
+
+    const [showViewModal, setShowViewModal] = useState(false);
+    const [selectedEnrollment, setSelectedEnrollment] = useState<Enrollment | null>(null);
+    const [viewData, setViewData] = useState<any>(null);
+    const [completedLessonIds, setCompletedLessonIds] = useState<number[]>([]);
+    const [isFetchingDetails, setIsFetchingDetails] = useState(false);
 
     const handleSearch = () => {
-        router.get('/instructor/enrollments', {
-            search: search || undefined,
-            course_id: courseFilter || undefined,
-            status: statusFilter || undefined,
-            payment_status: paymentStatusFilter || undefined,
-        }, {
-            preserveState: true,
-            replace: true,
-        });
+        router.get(
+            '/instructor/enrollments',
+            {
+                search: search || undefined,
+                course_id: courseFilter === 'all' ? undefined : courseFilter,
+                status: statusFilter === 'all' ? undefined : statusFilter,
+                payment_status: paymentStatusFilter === 'all' ? undefined : paymentStatusFilter,
+            },
+            { preserveState: true, replace: true },
+        );
     };
 
-    const getStatusBadgeClass = (color: string) => {
-        const baseClass = 'inline-flex px-2 py-1 text-xs font-semibold rounded-full';
+    const clearFilters = () => {
+        setSearch('');
+        setCourseFilter('all');
+        setStatusFilter('all');
+        setPaymentStatusFilter('all');
+        router.get('/instructor/enrollments');
+    };
 
-        switch (color) {
-            case 'green': return `${baseClass} bg-green-100 text-green-800`;
-            case 'blue': return `${baseClass} bg-blue-100 text-blue-800`;
-            case 'yellow': return `${baseClass} bg-yellow-100 text-yellow-800`;
-            case 'red': return `${baseClass} bg-red-100 text-red-800`;
-            case 'orange': return `${baseClass} bg-orange-100 text-orange-800`;
-            default: return `${baseClass} bg-gray-100 text-gray-800`;
+    const openViewModal = async (enrollment: Enrollment) => {
+        setSelectedEnrollment(enrollment);
+        setShowViewModal(true);
+        setIsFetchingDetails(true);
+        setViewData(null);
+        setCompletedLessonIds([]);
+
+        try {
+            const response = await axios.get(`/instructor/enrollments/${enrollment.id}/details`);
+            if (response.data.success) {
+                setViewData(response.data.enrollment);
+                setCompletedLessonIds(response.data.completed_lesson_ids || []);
+            }
+        } catch (error) {
+            console.error('Error fetching enrollment details:', error);
+        } finally {
+            setIsFetchingDetails(false);
         }
+    };
+
+    const getStatusBadge = (enrollment: Enrollment) => {
+        const colorMap: Record<string, string> = {
+            green: 'bg-emerald-100 text-emerald-800 border-none',
+            blue: 'bg-blue-100 text-blue-800 border-none',
+            yellow: 'bg-amber-100 text-amber-800 border-none',
+            red: 'bg-rose-100 text-rose-800 border-none',
+            orange: 'bg-orange-100 text-orange-800 border-none',
+            gray: 'bg-slate-100 text-slate-800 border-none',
+            purple: 'bg-purple-100 text-purple-800 border-none',
+        };
+        return (
+            <Badge className={colorMap[enrollment.status_color] || 'bg-slate-100 text-slate-800 border-none'}>
+                {enrollment.status_label}
+            </Badge>
+        );
+    };
+
+    const getPaymentStatusBadge = (enrollment: Enrollment) => {
+        const colorMap: Record<string, string> = {
+            green: 'bg-emerald-100 text-emerald-800 border-none',
+            blue: 'bg-blue-100 text-blue-800 border-none',
+            yellow: 'bg-amber-100 text-amber-800 border-none',
+            red: 'bg-rose-100 text-rose-800 border-none',
+            gray: 'bg-slate-100 text-slate-800 border-none',
+        };
+        return (
+            <Badge className={colorMap[enrollment.payment_status_color] || 'bg-slate-100 text-slate-800 border-none'}>
+                {enrollment.payment_status_label}
+            </Badge>
+        );
     };
 
     const columns = [
         {
             key: 'student',
             label: 'Student',
-            render: (value: any, enrollment: Enrollment) => (
+            render: (_value: any, enrollment: Enrollment) => (
                 <div>
-                    <div className="font-medium text-gray-900">{enrollment.student.name}</div>
-                    <div className="text-sm text-gray-500">{enrollment.student.email}</div>
+                    <div className="font-bold text-slate-700">{enrollment.student.name}</div>
+                    <div className="text-sm text-slate-500">{enrollment.student.email}</div>
                 </div>
-            )
+            ),
         },
         {
             key: 'course',
             label: 'Course',
-            render: (value: any, enrollment: Enrollment) => (
+            render: (_value: any, enrollment: Enrollment) => (
                 <div>
-                    <div className="font-medium text-gray-900">{enrollment.course.title}</div>
-                    <div className="text-sm text-gray-500">${enrollment.course.price}</div>
+                    <div className="font-bold text-slate-700">{enrollment.course.title}</div>
+                    <div className="text-sm text-slate-500">${Number(enrollment.course.price || 0).toFixed(2)}</div>
                 </div>
-            )
+            ),
         },
         {
             key: 'enrollment_date',
-            label: 'Enrolled',
+            label: 'Enrollment Date',
             render: (value: string) => (
-                <span className="text-sm text-gray-500">{value}</span>
-            )
+                <span className="text-slate-600">{value}</span>
+            ),
         },
         {
             key: 'progress',
@@ -135,180 +216,232 @@ export default function InstructorEnrollmentsIndex({
             render: (value: number, enrollment: Enrollment) => (
                 <div>
                     <div className="flex items-center gap-2">
-                        <div className="w-16 bg-gray-200 rounded-full h-2">
-                            <div 
-                                className="bg-blue-600 h-2 rounded-full" 
+                        <div className="h-2 w-20 overflow-hidden rounded-full bg-slate-100">
+                            <div
+                                className="h-full rounded-full bg-indigo-500"
                                 style={{ width: `${value}%` }}
-                            ></div>
+                            />
                         </div>
-                        <span className="text-sm text-gray-600">{value}%</span>
+                        <span className="text-sm font-bold text-slate-600">{value}%</span>
                     </div>
                     {enrollment.completion_date && (
-                        <div className="text-xs text-green-600 mt-1">
+                        <div className="mt-1 text-xs font-medium text-emerald-600">
                             Completed: {enrollment.completion_date}
                         </div>
                     )}
                 </div>
-            )
+            ),
+        },
+        {
+            key: 'payment_status',
+            label: 'Payment Status',
+            render: (_value: any, enrollment: Enrollment) => getPaymentStatusBadge(enrollment),
         },
         {
             key: 'status',
             label: 'Status',
-            render: (value: string, enrollment: Enrollment) => (
-                <div className="space-y-1">
-                    <span className={getStatusBadgeClass(enrollment.status_color)}>
-                        {enrollment.status_label}
-                    </span>
-                    <div>
-                        <span className={getStatusBadgeClass(enrollment.payment_status_color)}>
-                            {enrollment.payment_status_label}
-                        </span>
-                    </div>
-                </div>
-            )
+            render: (_value: any, enrollment: Enrollment) => getStatusBadge(enrollment),
         },
         {
             key: 'actions',
             label: 'Actions',
-            render: (value: any, enrollment: Enrollment) => (
-                <ActionButtonGroup>
-                    <ActionButton
-                        variant="view"
-                        icon={Eye}
-                        href={`/instructor/enrollments/${enrollment.id}`}
-                        title="View Details"
-                    />
-                </ActionButtonGroup>
-            )
-        }
+            className: 'text-center',
+            render: (_value: any, enrollment: Enrollment) => (
+                <div className="flex w-full justify-center">
+                    <ActionButtonGroup>
+                        <ActionButton
+                            variant="view"
+                            icon={Eye}
+                            onClick={() => openViewModal(enrollment)}
+                            title="View Details"
+                        />
+                    </ActionButtonGroup>
+                </div>
+            ),
+        },
     ];
 
     return (
-        <AppLayout breadcrumbs={[
-            { title: 'Dashboard', href: '/instructor/dashboard' },
-            { title: 'Student Enrollments', href: '/instructor/enrollments' }
-        ]}>
+        <AppLayout
+            breadcrumbs={[
+                { title: 'Dashboard', href: '/instructor/dashboard' },
+                { title: 'Student Enrollments', href: '/instructor/enrollments' },
+            ]}
+        >
             <Head title="Student Enrollments" />
-            
+
             <div className="space-y-6">
-                {/* Header */}
                 <div className="flex items-center justify-between">
                     <div>
-                        <h1 className="text-3xl font-bold text-gray-900">Student Enrollments</h1>
-                        <p className="text-gray-600">Manage and track your students' progress</p>
+                        <h1 className="page-title">Student Enrollments</h1>
+                        <p className="text-muted-foreground">Manage and track your students' progress</p>
                     </div>
                 </div>
 
-                {/* Statistics Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <Card>
-                        <CardContent className="p-4">
-                            <div className="flex items-center gap-2">
-                                <Users className="h-5 w-5 text-blue-600" />
-                                <div>
-                                    <p className="text-sm text-gray-600">Total Enrollments</p>
-                                    <p className="text-xl font-bold">{stats.total_enrollments}</p>
-                                </div>
+                {/* Filters */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Filter className="h-5 w-5" />
+                            Filters
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
+                            <div className="relative">
+                                <Search className="absolute top-3 left-3 h-4 w-4 text-muted-foreground" />
+                                <Input
+                                    placeholder="Search students or courses..."
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    className="pl-10"
+                                    onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                                />
                             </div>
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardContent className="p-4">
-                            <div className="flex items-center gap-2">
-                                <BookOpen className="h-5 w-5 text-green-600" />
-                                <div>
-                                    <p className="text-sm text-gray-600">Active Students</p>
-                                    <p className="text-xl font-bold">{stats.active_enrollments}</p>
-                                </div>
+                            <Select value={courseFilter} onValueChange={setCourseFilter}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="All Courses" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Courses</SelectItem>
+                                    {courses.map((course) => (
+                                        <SelectItem key={course.id} value={course.id.toString()}>
+                                            {course.title}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <Select value={statusFilter} onValueChange={setStatusFilter}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="All Statuses" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Statuses</SelectItem>
+                                    {Object.entries(statuses).map(([key, label]) => (
+                                        <SelectItem key={key} value={key}>{label}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <Select value={paymentStatusFilter} onValueChange={setPaymentStatusFilter}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="All Payment Status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Payment Status</SelectItem>
+                                    {Object.entries(paymentStatuses).map(([key, label]) => (
+                                        <SelectItem key={key} value={key}>{label}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <div className="flex gap-2">
+                                <Button onClick={handleSearch} className="flex-1">
+                                    <Search className="mr-2 h-4 w-4" />
+                                    Search
+                                </Button>
+                                <Button variant="outline" onClick={clearFilters}>
+                                    Reset
+                                </Button>
                             </div>
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardContent className="p-4">
-                            <div className="flex items-center gap-2">
-                                <CheckCircle className="h-5 w-5 text-purple-600" />
-                                <div>
-                                    <p className="text-sm text-gray-600">Completed</p>
-                                    <p className="text-xl font-bold">{stats.completed_enrollments}</p>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardContent className="p-4">
-                            <div className="flex items-center gap-2">
-                                <DollarSign className="h-5 w-5 text-orange-600" />
-                                <div>
-                                    <p className="text-sm text-gray-600">Total Revenue</p>
-                                    <p className="text-xl font-bold">${(stats.total_revenue || 0).toFixed(2)}</p>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
-
-                {/* Search and Filters */}
-                <div className="bg-white shadow rounded-lg p-4">
-                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                        <input
-                            type="text"
-                            placeholder="Search students or courses..."
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                            className="border border-gray-300 rounded-md px-3 py-2"
-                        />
-                        <select
-                            value={courseFilter}
-                            onChange={(e) => setCourseFilter(e.target.value)}
-                            className="border border-gray-300 rounded-md px-3 py-2"
-                        >
-                            <option value="">All Courses</option>
-                            {courses.map(course => (
-                                <option key={course.id} value={course.id}>
-                                    {course.title}
-                                </option>
-                            ))}
-                        </select>
-                        <select
-                            value={statusFilter}
-                            onChange={(e) => setStatusFilter(e.target.value)}
-                            className="border border-gray-300 rounded-md px-3 py-2"
-                        >
-                            <option value="">All Statuses</option>
-                            {Object.entries(statuses).map(([key, label]) => (
-                                <option key={key} value={key}>{label}</option>
-                            ))}
-                        </select>
-                        <select
-                            value={paymentStatusFilter}
-                            onChange={(e) => setPaymentStatusFilter(e.target.value)}
-                            className="border border-gray-300 rounded-md px-3 py-2"
-                        >
-                            <option value="">All Payment Status</option>
-                            {Object.entries(paymentStatuses).map(([key, label]) => (
-                                <option key={key} value={key}>{label}</option>
-                            ))}
-                        </select>
-                        <Button onClick={handleSearch} className="flex items-center gap-2">
-                            <Search className="h-4 w-4" />
-                            Search
-                        </Button>
-                    </div>
-                </div>
+                        </div>
+                    </CardContent>
+                </Card>
 
                 {/* Enrollments Table */}
-                <DataTable
-                    columns={columns}
-                    data={enrollments.data}
-                    title={`Student Enrollments (${enrollments.meta?.total || 0})`}
-                    emptyMessage="No enrollments found"
-                    paginationLinks={enrollments.links}
-                    onPageChange={(url) => router.get(url)}
-                />
+                <Card>
+                    <CardContent className="p-0">
+                        <DataTable
+                            columns={columns}
+                            data={enrollments.data}
+                            title={`Student Enrollments (${total})`}
+                            emptyMessage="No enrollments found"
+                            paginationLinks={enrollments.links}
+                            onPageChange={(url) => router.get(url)}
+                        />
+                    </CardContent>
+                </Card>
+
+                {/* View Enrollment Modal */}
+                <Dialog open={showViewModal && !!selectedEnrollment} onOpenChange={(open) => {
+                    if (!open) {
+                        setShowViewModal(false);
+                        setViewData(null);
+                        setSelectedEnrollment(null);
+                        setCompletedLessonIds([]);
+                    }
+                }}>
+                    <DialogContent className="sm:max-w-lg">
+                        <DialogHeader>
+                            <DialogTitle>Enrollment Details</DialogTitle>
+                            <DialogDescription>Student and course information</DialogDescription>
+                        </DialogHeader>
+                        {isFetchingDetails ? (
+                            <div className="flex h-32 items-center justify-center">
+                                <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent"></div>
+                            </div>
+                        ) : viewData ? (
+                            <div className="space-y-4 text-sm">
+                                <div className="space-y-1">
+                                    <p className="text-xs font-semibold text-slate-500">Student</p>
+                                    <p className="font-semibold text-slate-900">{viewData.student.name}</p>
+                                    <p className="text-slate-500">{viewData.student.email}</p>
+                                </div>
+                                <div className="space-y-1">
+                                    <p className="text-xs font-semibold text-slate-500">Course</p>
+                                    <p className="font-semibold text-slate-900">{viewData.course.title}</p>
+                                    <p className="text-slate-500">
+                                        {Number(viewData.course.price || 0) > 0
+                                            ? `$${Number(viewData.course.price).toFixed(2)}`
+                                            : 'FREE'}
+                                    </p>
+                                </div>
+                                <div className="flex flex-wrap gap-3">
+                                    <div className="space-y-1">
+                                        <p className="text-xs font-semibold text-slate-500">Status</p>
+                                        {selectedEnrollment && getStatusBadge(selectedEnrollment)}
+                                    </div>
+                                    <div className="space-y-1">
+                                        <p className="text-xs font-semibold text-slate-500">Payment</p>
+                                        {selectedEnrollment && getPaymentStatusBadge(selectedEnrollment)}
+                                    </div>
+                                    <div className="space-y-1">
+                                        <p className="text-xs font-semibold text-slate-500">Date</p>
+                                        <p className="text-slate-700">
+                                            {new Date(viewData.enrollment_date).toLocaleDateString()}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="space-y-1">
+                                    <p className="text-xs font-semibold text-slate-500">Progress</p>
+                                    <div className="flex items-center gap-2">
+                                        <div className="h-2 w-32 overflow-hidden rounded-full bg-slate-100">
+                                            <div
+                                                className="h-full rounded-full bg-indigo-500"
+                                                style={{ width: `${Math.round(Number(viewData.progress || 0))}%` }}
+                                            />
+                                        </div>
+                                        <span className="text-slate-700">
+                                            {Math.round(Number(viewData.progress || 0))}%
+                                        </span>
+                                        <span className="text-slate-400">
+                                            ({completedLessonIds.length}/{viewData.course.lessons.length})
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex h-32 flex-col items-center justify-center gap-2">
+                                <p className="text-xs font-semibold text-slate-500">Failed to load details</p>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => selectedEnrollment && openViewModal(selectedEnrollment)}
+                                >
+                                    Try Again
+                                </Button>
+                            </div>
+                        )}
+                    </DialogContent>
+                </Dialog>
             </div>
         </AppLayout>
     );

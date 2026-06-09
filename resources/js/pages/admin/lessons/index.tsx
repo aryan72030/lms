@@ -1,14 +1,45 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { Edit, Trash2, Plus, Layout, GripVertical, ChevronRight, ChevronDown, CheckCircle2, Circle, MoreVertical, X, Save } from 'lucide-react';
+import {
+    Edit,
+    Trash2,
+    Plus,
+    Layout,
+    GripVertical,
+    ChevronRight,
+    ChevronDown,
+    CheckCircle2,
+    Circle,
+    Save,
+    Globe,
+    GlobeLock,
+    FileText,
+    BrainCircuit,
+    ClipboardList,
+    Video,
+    ChevronUp,
+    ListChecks,
+} from 'lucide-react';
 import React, { useState } from 'react';
+import { AdminQuizModal } from '@/components/admin/quiz-modal';
 import { ActionButton } from '@/components/ui/action-button';
 import { ActionButtonGroup } from '@/components/ui/action-button-group';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ConfirmationModal from '@/components/ui/confirmation-modal';
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useActionMessages } from '@/hooks/use-action-messages';
+
+import { useNotification } from '@/contexts/notification-context';
+
 import AppLayout from '@/layouts/app-layout';
 
 interface Lesson {
@@ -32,6 +63,15 @@ interface Section {
     lessons: Lesson[];
 }
 
+interface Quiz {
+    id: number;
+    title: string;
+    total_marks: number;
+    questions_count: number;
+    is_published: boolean;
+    created_at: string;
+}
+
 interface Course {
     id: number;
     title: string;
@@ -47,106 +87,203 @@ interface Props {
     course: Course;
     sections: Section[];
     unsectionedLessons: Lesson[];
+    quizzes: Quiz[];
+    lessonTypes: string[];
 }
 
-export default function AdminCourseLessonsIndex({ course, sections, unsectionedLessons }: Props) {
+export default function AdminCourseLessonsIndex({
+    course,
+    sections,
+    unsectionedLessons,
+    quizzes,
+    lessonTypes,
+}: Props) {
     const [loading, setLoading] = useState<number | null>(null);
     const [showSectionModal, setShowSectionModal] = useState(false);
     const [editingSection, setEditingSection] = useState<Section | null>(null);
     const [sectionTitle, setSectionTitle] = useState('');
     const [collapsedSections, setCollapsedSections] = useState<number[]>([]);
     const [lessonToDelete, setLessonToDelete] = useState<Lesson | null>(null);
-    const [sectionToDelete, setSectionToDelete] = useState<Section | null>(null);
-    const lessonMessages = useActionMessages('Lesson');
+    const [sectionToDelete, setSectionToDelete] = useState<Section | null>(
+        null,
+    );
+    const [quizToDelete, setQuizToDelete] = useState<Quiz | null>(null);
+    const [isQuizModalOpen, setIsQuizModalOpen] = useState(false);
+    const [editingQuiz, setEditingQuiz] = useState<Quiz | null>(null);
+    const { showSuccess, showError } = useNotification();
+
+    const handleAddQuiz = () => {
+        setEditingQuiz(null);
+        setIsQuizModalOpen(true);
+    };
+
+    const handleEditQuiz = (quiz: Quiz) => {
+        setEditingQuiz(quiz);
+        setIsQuizModalOpen(true);
+    };
 
     const toggleSection = (sectionId: number) => {
-        setCollapsedSections(prev => 
-            prev.includes(sectionId) ? prev.filter(id => id !== sectionId) : [...prev, sectionId]
+        setCollapsedSections((prev) =>
+            prev.includes(sectionId)
+                ? prev.filter((id) => id !== sectionId)
+                : [...prev, sectionId],
         );
     };
 
-    const handleToggleStatus = (lesson: Lesson) => {
+    const handleTogglePublish = (lesson: Lesson) => {
         setLoading(lesson.id);
-        router.patch(`/admin/courses/${course.id}/lessons/${lesson.id}/toggle-status`, {}, {
-            onSuccess: () => lessonMessages.success('update'),
-            onFinish: () => setLoading(null),
-        });
+        router.patch(
+            `/admin/lessons/${lesson.id}/toggle-publish`,
+            {},
+            {
+                onSuccess: () => {
+                    // Backend provides the success message
+                },
+                onFinish: () => setLoading(null),
+                preserveScroll: true,
+            },
+        );
     };
 
     const handleDelete = () => {
         if (!lessonToDelete) return;
 
-        router.delete(`/admin/courses/${course.id}/lessons/${lessonToDelete.id}`, {
-            onStart: () => setLoading(lessonToDelete.id),
-            onSuccess: () => {
-                lessonMessages.success('delete');
-                setLessonToDelete(null);
+        router.delete(
+            `/admin/courses/${course.id}/lessons/${lessonToDelete.id}`,
+            {
+                onStart: () => setLoading(lessonToDelete.id),
+                onSuccess: () => {
+                    setLessonToDelete(null);
+                },
+                onFinish: () => setLoading(null),
             },
-            onFinish: () => setLoading(null),
-        });
+        );
     };
 
     const handleSectionSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (editingSection) {
-            router.put(`/admin/courses/${course.id}/sections/${editingSection.id}`, { title: sectionTitle }, {
-                onSuccess: () => {
-                    setShowSectionModal(false);
-                    setSectionTitle('');
-                    setEditingSection(null);
-                    lessonMessages.success('update');
-                }
-            });
+            router.put(
+                `/admin/courses/${course.id}/sections/${editingSection.id}`,
+                { title: sectionTitle },
+                {
+                    onSuccess: () => {
+                        setShowSectionModal(false);
+                        setSectionTitle('');
+                        setEditingSection(null);
+                    },
+                },
+            );
         } else {
-            router.post(`/admin/courses/${course.id}/sections`, { title: sectionTitle }, {
-                onSuccess: () => {
-                    setShowSectionModal(false);
-                    setSectionTitle('');
-                    lessonMessages.success('create');
-                }
-            });
+            router.post(
+                `/admin/courses/${course.id}/sections`,
+                { title: sectionTitle },
+                {
+                    onSuccess: () => {
+                        setShowSectionModal(false);
+                        setSectionTitle('');
+                    },
+                },
+            );
         }
     };
 
     const handleDeleteSection = () => {
         if (!sectionToDelete) return;
 
-        router.delete(`/admin/courses/${course.id}/sections/${sectionToDelete.id}`, {
+        router.delete(
+            `/admin/courses/${course.id}/sections/${sectionToDelete.id}`,
+            {
+                onSuccess: () => {
+                    setSectionToDelete(null);
+                },
+            },
+        );
+    };
+
+    const handleDeleteQuiz = () => {
+        if (!quizToDelete) return;
+
+        router.delete(`/admin/quizzes/${quizToDelete.id}`, {
             onSuccess: () => {
-                lessonMessages.success('delete');
-                setSectionToDelete(null);
-            }
+                setQuizToDelete(null);
+            },
+            onError: (err: any) => {
+                showError(err.response?.data?.message || 'Failed to delete quiz.');
+            },
         });
     };
 
+    const handleMoveLesson = (lesson: Lesson, direction: 'up' | 'down') => {
+        setLoading(lesson.id);
+        router.patch(
+            `/admin/courses/${course.id}/lessons/${lesson.id}/move-${direction}`,
+            {},
+            {
+                onFinish: () => setLoading(null),
+                preserveScroll: true,
+            },
+        );
+    };
+
     const renderLessonRow = (lesson: Lesson) => (
-        <div key={lesson.id} className="group flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl hover:border-indigo-200 hover:shadow-sm transition-all mb-2">
+        <div
+            key={lesson.id}
+            className="group mb-2 flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3 transition-all hover:border-indigo-200 hover:shadow-sm"
+        >
             <div className="flex items-center gap-3">
-                <GripVertical className="h-4 w-4 text-slate-300 cursor-move group-hover:text-slate-400" />
-                <div className="h-8 w-8 rounded-lg flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: lesson.type_color }}>
-                    {lesson.type_icon}
+                <div className="flex flex-col gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                    <button
+                        onClick={() => handleMoveLesson(lesson, 'up')}
+                        disabled={loading === lesson.id}
+                        className="text-slate-300 hover:text-indigo-600 disabled:opacity-50"
+                    >
+                        <ChevronUp className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                        onClick={() => handleMoveLesson(lesson, 'down')}
+                        disabled={loading === lesson.id}
+                        className="text-slate-300 hover:text-indigo-600 disabled:opacity-50"
+                    >
+                        <ChevronDown className="h-3.5 w-3.5" />
+                    </button>
+                </div>
+                <div
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-xs font-bold text-white shadow-sm"
+                    style={{ backgroundColor: lesson.type_color }}
+                >
+                    {lesson.type === 'Video' ? (
+                        <Video className="h-4 w-4" />
+                    ) : lesson.type === 'Assignment' ? (
+                        <ClipboardList className="h-4 w-4" />
+                    ) : (
+                        <FileText className="h-4 w-4" />
+                    )}
                 </div>
                 <div>
-                    <h4 className="text-sm font-bold text-slate-800">{lesson.title}</h4>
-                    <p className="text-[10px] font-medium text-slate-500 uppercase tracking-tight">
+                    <h4 className="text-sm font-bold text-slate-800">
+                        {lesson.title}
+                    </h4>
+                    <p className="text-[10px] font-medium tracking-tight text-slate-500 uppercase">
                         {lesson.type} • {lesson.duration_display}
                     </p>
                 </div>
             </div>
-            
+
             <div className="flex items-center gap-3">
                 {/* Quick Toggle Status */}
-                <button 
-                    onClick={() => handleToggleStatus(lesson)}
+                <button
+                    type="button"
+                    onClick={() => handleTogglePublish(lesson)}
                     disabled={loading === lesson.id}
-                    className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-black uppercase transition-all ${
-                        lesson.is_published 
-                            ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' 
+                    className={`flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-black uppercase transition-all ${
+                        lesson.is_published
+                            ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
                             : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
                     }`}
                 >
                     {loading === lesson.id ? (
-                        <div className="h-3 w-3 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
+                        <div className="h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
                     ) : lesson.is_published ? (
                         <CheckCircle2 className="h-3 w-3" />
                     ) : (
@@ -156,6 +293,13 @@ export default function AdminCourseLessonsIndex({ course, sections, unsectionedL
                 </button>
 
                 <ActionButtonGroup>
+                    <ActionButton
+                        variant="view"
+                        icon={lesson.is_published ? GlobeLock : Globe}
+                        onClick={() => handleTogglePublish(lesson)}
+                        title={lesson.is_published ? 'Unpublish Lesson' : 'Publish Lesson'}
+                        loading={loading === lesson.id}
+                    />
                     <ActionButton
                         variant="edit"
                         icon={Edit}
@@ -174,222 +318,402 @@ export default function AdminCourseLessonsIndex({ course, sections, unsectionedL
         </div>
     );
 
+    const renderQuizRow = (quiz: Quiz) => (
+        <div
+            key={quiz.id}
+            className="group mb-2 flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3 transition-all hover:border-indigo-200 hover:shadow-sm"
+        >
+            <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500 text-white shadow-sm">
+                    <BrainCircuit className="h-4 w-4" />
+                </div>
+                <div>
+                    <h4 className="text-sm font-bold text-slate-800">
+                        {quiz.title}
+                    </h4>
+                    <p className="text-[10px] font-medium tracking-tight text-slate-500 uppercase">
+                        {quiz.questions_count} Questions • {quiz.total_marks} Marks
+                    </p>
+                </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+                <ActionButtonGroup>
+                    <ActionButton
+                        variant="edit"
+                        icon={Edit}
+                        onClick={() => handleEditQuiz(quiz)}
+                        title="Edit Quiz Settings"
+                    />
+                    <ActionButton
+                        variant="view"
+                        icon={ListChecks}
+                        href={`/admin/quizzes/${quiz.id}`}
+                        title="Edit Quiz Questions"
+                    />
+                    <ActionButton
+                        variant="delete"
+                        icon={Trash2}
+                        onClick={() => setQuizToDelete(quiz)}
+                        title="Delete Quiz"
+                    />
+                </ActionButtonGroup>
+            </div>
+        </div>
+    );
+
     return (
-        <AppLayout breadcrumbs={[
-            { title: 'Dashboard', href: '/admin/dashboard' },
-            { title: 'Course Management', href: '/admin/courses' },
-            { title: course.title, href: `/admin/courses/${course.id}/lessons` }
-        ]}>
-            <Head title={`Lessons - ${course.title}`} />
-            
+        <AppLayout
+            breadcrumbs={[
+                { title: 'Dashboard', href: '/admin/dashboard' },
+                { title: 'Course Management', href: '/admin/courses' },
+                {
+                    title: course.title,
+                    href: `/admin/courses/${course.id}/lessons`,
+                },
+            ]}
+        >
+            <Head title={`Curriculum - ${course.title}`} />
+
             <div className="space-y-8 pb-10">
                 {/* Header */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
                     <div>
-                        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Curriculum Management</h1>
-                        <p className="text-slate-500 font-medium mt-1">
-                            Organizing lessons for <span className="text-indigo-600 font-bold">"{course.title}"</span>
+                        <h1 className="page-title font-black text-slate-900">
+                            Course Management
+                        </h1>
+                        <p className="mt-1 font-medium text-slate-500">
+                            Manage learning material and tests for{' '}
+                            <span className="font-bold text-indigo-600">
+                                "{course.title}"
+                            </span>
                         </p>
                     </div>
                     <div className="flex flex-wrap gap-3">
-                        <Button 
-                            variant="outline" 
+                        <Button
+                            variant="outline"
                             onClick={() => {
                                 setEditingSection(null);
                                 setSectionTitle('');
                                 setShowSectionModal(true);
                             }}
-                            className="h-10 px-5 rounded-xl font-bold uppercase text-[10px] border-slate-200"
+                            className="h-10 rounded-xl border-slate-200 px-5 text-[10px] font-bold uppercase"
                         >
-                            <Layout className="h-4 w-4 mr-2" />
+                            <Layout className="mr-2 h-4 w-4" />
                             New Section
                         </Button>
-                        <Button variant="create" asChild className="h-10 px-5 rounded-xl font-bold uppercase text-[10px]">
-                            <Link href={`/admin/courses/${course.id}/lessons/create`}>
-                                <Plus className="h-4 w-4 mr-2" />
-                                Add Lesson
+                        <Button
+                            variant="create"
+                            asChild
+                            className="h-10 rounded-xl px-5 text-[10px] font-bold uppercase"
+                        >
+                            <Link
+                                href={`/admin/courses/${course.id}/lessons/create`}
+                            >
+                                <Plus className="mr-2 h-4 w-4" />
+                                Add Lecture
                             </Link>
                         </Button>
                     </div>
                 </div>
 
                 {/* Course Overview Card */}
-                <Card className="border-none shadow-md bg-white rounded-3xl overflow-hidden">
+                <Card className="overflow-hidden rounded-3xl border-none bg-white shadow-md">
                     <CardContent className="p-6">
                         <div className="flex flex-wrap items-center gap-8">
                             <div>
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Instructor</p>
-                                <p className="text-sm font-bold text-slate-800">{course.instructor.name}</p>
+                                <p className="text-[10px] font-black tracking-widest text-slate-400 uppercase">
+                                    Instructor
+                                </p>
+                                <p className="text-sm font-bold text-slate-800">
+                                    {course.instructor.name}
+                                </p>
                             </div>
-                            <div className="h-8 w-px bg-slate-100 hidden md:block" />
+                            <div className="hidden h-8 w-px bg-slate-100 md:block" />
                             <div>
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</p>
-                                <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-black uppercase border mt-1 ${
-                                    course.status === 'Published' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'
-                                }`}>
-                                    {course.status}
+                                <p className="text-[10px] font-black tracking-widest text-slate-400 uppercase">
+                                    Status
+                                </p>
+                                <span
+                                    className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[9px] font-black uppercase ${
+                                        course.status === 'Published'
+                                            ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
+                                            : 'border-amber-100 bg-amber-50 text-amber-700'
+                                    }`}
+                                >
+                                    {course.status_label}
                                 </span>
                             </div>
-                            <div className="h-8 w-px bg-slate-100 hidden md:block" />
+                            <div className="hidden h-8 w-px bg-slate-100 md:block" />
                             <div>
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Curriculum</p>
+                                <p className="text-[10px] font-black tracking-widest text-slate-400 uppercase">
+                                    Total Curriculum
+                                </p>
                                 <p className="text-sm font-bold text-slate-800">
-                                    {sections.length} Sections • {sections.reduce((acc, s) => acc + s.lessons.length, 0) + unsectionedLessons.length} Lessons
+                                    {sections.length} Sections • {sections.reduce((acc, s) => acc + s.lessons.length, 0) + unsectionedLessons.length} Lectures
+                                </p>
+                            </div>
+                            <div className="hidden h-8 w-px bg-slate-100 md:block" />
+                            <div>
+                                <p className="text-[10px] font-black tracking-widest text-slate-400 uppercase">
+                                    Assessments
+                                </p>
+                                <p className="text-sm font-bold text-slate-800">
+                                    {quizzes.length} Tests / Quizzes
                                 </p>
                             </div>
                         </div>
                     </CardContent>
                 </Card>
 
-                {/* Curriculum Builder */}
-                <div className="space-y-6">
-                    {/* Unsectioned Lessons (Warning) */}
-                    {unsectionedLessons.length > 0 && (
-                        <div className="space-y-3">
-                            <div className="flex items-center gap-2 px-2">
-                                <div className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                                <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest">Unsectioned Lessons</h3>
-                                <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full uppercase">
-                                    {unsectionedLessons.length}
-                                </span>
-                            </div>
-                            <div className="pl-4 border-l-2 border-amber-100 ml-2">
-                                {unsectionedLessons.map(renderLessonRow)}
-                            </div>
-                        </div>
-                    )}
+                {/* Main Content Tabs */}
+                <Tabs defaultValue="curriculum" className="space-y-6">
+                    <TabsList className="h-12 w-full max-w-md gap-2 rounded-2xl bg-slate-100 p-1.5 shadow-inner">
+                        <TabsTrigger 
+                            value="curriculum" 
+                            className="h-9 flex-1 rounded-xl font-black text-[10px] uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-indigo-600 data-[state=active]:shadow-sm"
+                        >
+                            <FileText className="mr-2 h-3.5 w-3.5" />
+                            Learning Material
+                        </TabsTrigger>
+                        <TabsTrigger 
+                            value="assessments"
+                            className="h-9 flex-1 rounded-xl font-black text-[10px] uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-amber-600 data-[state=active]:shadow-sm"
+                        >
+                            <BrainCircuit className="mr-2 h-3.5 w-3.5" />
+                            Tests & Quizzes
+                        </TabsTrigger>
+                    </TabsList>
 
-                    {/* Sections */}
-                    {sections.length > 0 ? (
-                        <div className="space-y-6">
-                            {sections.map((section) => (
-                                <div key={section.id} className="space-y-3">
-                                    {/* Section Header */}
-                                    <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-100 group">
-                                        <div className="flex items-center gap-3">
-                                            <button 
-                                                onClick={() => toggleSection(section.id)}
-                                                className="h-6 w-6 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:border-indigo-200 transition-all shadow-sm"
-                                            >
-                                                {collapsedSections.includes(section.id) ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                                            </button>
-                                            <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">{section.title}</h3>
-                                            <span className="text-[10px] font-bold text-slate-400 bg-white px-2 py-0.5 rounded-full border border-slate-100 uppercase">
-                                                {section.lessons.length} Lessons
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <Button 
-                                                variant="ghost" 
-                                                size="sm" 
-                                                className="h-8 w-8 p-0 rounded-lg"
-                                                onClick={() => {
-                                                    setEditingSection(section);
-                                                    setSectionTitle(section.title);
-                                                    setShowSectionModal(true);
-                                                }}
-                                            >
-                                                <Edit className="h-3.5 w-3.5 text-slate-400" />
-                                            </Button>
-                                            <Button 
-                                                variant="ghost" 
-                                                size="sm" 
-                                                className="h-8 w-8 p-0 rounded-lg hover:bg-rose-50 hover:text-rose-600"
-                                                onClick={() => setSectionToDelete(section)}
-                                            >
-                                                <Trash2 className="h-3.5 w-3.5" />
-                                            </Button>
-                                        </div>
-                                    </div>
-
-                                    {/* Lessons in Section */}
-                                    {!collapsedSections.includes(section.id) && (
-                                        <div className="pl-6 border-l-2 border-slate-100 ml-6 space-y-2">
-                                            {section.lessons.length > 0 ? (
-                                                section.lessons.map(renderLessonRow)
-                                            ) : (
-                                                <div className="p-4 text-center border border-dashed border-slate-200 rounded-2xl">
-                                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">No lessons in this section</p>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
+                    <TabsContent value="curriculum" className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
+                        {/* Unsectioned Lessons (Warning) */}
+                        {unsectionedLessons.length > 0 && (
+                            <div className="space-y-3">
+                                <div className="flex items-center gap-2 px-2">
+                                    <div className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                                    <h3 className="text-xs font-black tracking-widest text-slate-800 uppercase">
+                                        Unsectioned Lectures
+                                    </h3>
+                                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-400 uppercase">
+                                        {unsectionedLessons.length}
+                                    </span>
                                 </div>
-                            ))}
-                        </div>
-                    ) : unsectionedLessons.length === 0 && (
-                        <div className="text-center py-20 bg-slate-50 rounded-[40px] border-2 border-dashed border-slate-200">
-                            <div className="h-16 w-16 bg-white rounded-3xl shadow-sm flex items-center justify-center mx-auto mb-4 text-slate-300">
-                                <Layout className="h-8 w-8" />
+                                <div className="ml-2 border-l-2 border-amber-100 pl-4">
+                                    {unsectionedLessons.map(renderLessonRow)}
+                                </div>
                             </div>
-                            <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">Empty Curriculum</h3>
-                            <p className="text-slate-500 text-sm mt-1">Start by creating your first section or adding a lesson.</p>
-                            <Button 
-                                variant="create" 
-                                className="mt-6 h-11 px-8 rounded-2xl font-black uppercase text-xs"
-                                onClick={() => setShowSectionModal(true)}
+                        )}
+
+                        {/* Sections */}
+                        {sections.length > 0 ? (
+                            <div className="space-y-6">
+                                {sections.map((section) => (
+                                    <div key={section.id} className="space-y-3">
+                                        {/* Section Header */}
+                                        <div className="group flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                                            <div className="flex items-center gap-3">
+                                                <button
+                                                    onClick={() =>
+                                                        toggleSection(section.id)
+                                                    }
+                                                    className="flex h-6 w-6 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 shadow-sm transition-all hover:border-indigo-200 hover:text-indigo-600"
+                                                >
+                                                    {collapsedSections.includes(
+                                                        section.id,
+                                                    ) ? (
+                                                        <ChevronRight className="h-4 w-4" />
+                                                    ) : (
+                                                        <ChevronDown className="h-4 w-4" />
+                                                    )}
+                                                </button>
+                                                <h3 className="text-sm font-black tracking-tight text-slate-800 uppercase">
+                                                    {section.title}
+                                                </h3>
+                                                <span className="rounded-full border border-slate-100 bg-white px-2 py-0.5 text-[10px] font-bold text-slate-400 uppercase">
+                                                    {section.lessons.length} Lectures
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-8 rounded-lg px-3 text-[10px] font-bold uppercase text-indigo-600 hover:bg-indigo-50"
+                                                    asChild
+                                                >
+                                                    <Link href={`/admin/courses/${course.id}/lessons/create?section_id=${section.id}`}>
+                                                        <Plus className="mr-1.5 h-3.5 w-3.5" />
+                                                        Add Lecture
+                                                    </Link>
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-8 w-8 rounded-lg p-0"
+                                                    onClick={() => {
+                                                        setEditingSection(section);
+                                                        setSectionTitle(
+                                                            section.title,
+                                                        );
+                                                        setShowSectionModal(true);
+                                                    }}
+                                                >
+                                                    <Edit className="h-3.5 w-3.5 text-slate-400" />
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-8 w-8 rounded-lg p-0 hover:bg-rose-50 hover:text-rose-600"
+                                                    onClick={() =>
+                                                        setSectionToDelete(section)
+                                                    }
+                                                >
+                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                </Button>
+                                            </div>
+                                        </div>
+
+                                        {/* Lessons in Section */}
+                                        {!collapsedSections.includes(
+                                            section.id,
+                                        ) && (
+                                            <div className="ml-6 space-y-2 border-l-2 border-slate-100 pl-6">
+                                                {section.lessons.length > 0 ? (
+                                                    section.lessons.map(
+                                                        renderLessonRow,
+                                                    )
+                                                ) : (
+                                                    <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-center">
+                                                        <p className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">
+                                                            No lectures in this
+                                                            section
+                                                        </p>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="mt-2 h-8 rounded-lg px-3 text-[10px] font-bold uppercase text-indigo-600 hover:bg-indigo-50"
+                                                            asChild
+                                                        >
+                                                            <Link href={`/admin/courses/${course.id}/lessons/create?section_id=${section.id}`}>
+                                                                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                                                                Add Lecture
+                                                            </Link>
+                                                        </Button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            unsectionedLessons.length === 0 && (
+                                <div className="rounded-[40px] border-2 border-dashed border-slate-200 bg-slate-50 py-20 text-center">
+                                    <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-white text-slate-300 shadow-sm">
+                                        <Layout className="h-8 w-8" />
+                                    </div>
+                                    <h3 className="text-lg font-black tracking-tight text-slate-800 uppercase">
+                                        Empty Curriculum
+                                    </h3>
+                                    <p className="mt-1 text-sm text-slate-500">
+                                        Start by creating your first section or
+                                        adding a lecture.
+                                    </p>
+                                    <Button
+                                        variant="create"
+                                        className="mt-6 h-11 rounded-2xl px-8 text-xs font-black uppercase"
+                                        onClick={() => setShowSectionModal(true)}
+                                    >
+                                        <Plus className="mr-2 h-4 w-4" />
+                                        Create Section
+                                    </Button>
+                                </div>
+                            )
+                        )}
+                    </TabsContent>
+
+                    <TabsContent value="assessments" className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                        <div className="flex items-center justify-between px-2">
+                            <div>
+                                <h3 className="text-xs font-black tracking-widest text-slate-800 uppercase">
+                                    Course Assessments
+                                </h3>
+                                <p className="text-[10px] font-medium text-slate-500 uppercase mt-0.5">Manage quizzes and exams for this course</p>
+                            </div>
+                            <Button
+                                variant="create"
+                                size="sm"
+                                className="h-9 rounded-xl px-4 text-[10px] font-bold uppercase"
+                                onClick={() => handleAddQuiz()}
                             >
-                                <Plus className="h-4 w-4 mr-2" />
-                                Create Section
+                                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                                Create Test
                             </Button>
                         </div>
-                    )}
-                </div>
 
-                {/* Section Modal */}
-                {showSectionModal && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-                        <div className="bg-white rounded-[32px] shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in duration-200">
-                            <div className="p-8">
-                                <div className="flex items-center justify-between mb-6">
-                                    <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">
-                                        {editingSection ? 'Update Section' : 'New Section'}
-                                    </h2>
-                                    <button 
-                                        onClick={() => setShowSectionModal(false)}
-                                        className="h-10 w-10 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 hover:text-slate-800 transition-colors"
-                                    >
-                                        <X className="h-5 w-5" />
-                                    </button>
-                                </div>
-
-                                <form onSubmit={handleSectionSubmit} className="space-y-6">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="section_title" className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Section Title</Label>
-                                        <Input
-                                            id="section_title"
-                                            value={sectionTitle}
-                                            onChange={(e) => setSectionTitle(e.target.value)}
-                                            placeholder="e.g. Introduction to Laravel"
-                                            className="h-14 rounded-2xl bg-slate-50 border-none text-slate-800 font-bold placeholder:text-slate-300 focus:ring-2 focus:ring-indigo-500/20 transition-all"
-                                            required
-                                            autoFocus
-                                        />
-                                    </div>
-
-                                    <div className="flex gap-3">
-                                        <Button 
-                                            type="button" 
-                                            variant="outline" 
-                                            className="flex-1 h-14 rounded-2xl font-black uppercase text-xs border-slate-200"
-                                            onClick={() => setShowSectionModal(false)}
-                                        >
-                                            Cancel
-                                        </Button>
-                                        <Button 
-                                            type="submit" 
-                                            variant="create" 
-                                            className="flex-1 h-14 rounded-2xl font-black uppercase text-xs shadow-lg shadow-indigo-100"
-                                        >
-                                            <Save className="h-4 w-4 mr-2" />
-                                            {editingSection ? 'Update' : 'Create'}
-                                        </Button>
-                                    </div>
-                                </form>
+                        {quizzes.length > 0 ? (
+                            <div className="space-y-2">
+                                {quizzes.map(renderQuizRow)}
                             </div>
-                        </div>
-                    </div>
-                )}
+                        ) : (
+                            <div className="rounded-[40px] border-2 border-dashed border-slate-200 bg-slate-50 py-20 text-center">
+                                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-white text-amber-300 shadow-sm">
+                                    <BrainCircuit className="h-8 w-8" />
+                                </div>
+                                <h3 className="text-lg font-black tracking-tight text-slate-800 uppercase">
+                                    No Assessments
+                                </h3>
+                                <p className="mt-1 text-sm text-slate-500">
+                                    No tests have been created for this course yet.
+                                </p>
+                            </div>
+                        )}
+                    </TabsContent>
+                </Tabs>
+
+                <Dialog open={showSectionModal} onOpenChange={(open) => !open && setShowSectionModal(false)}>
+                    <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                            <DialogTitle>
+                                {editingSection ? 'Update Section' : 'New Section'}
+                            </DialogTitle>
+                            <DialogDescription>
+                                {editingSection ? 'Update the section title.' : 'Create a new section to organize your lessons.'}
+                            </DialogDescription>
+                        </DialogHeader>
+                        <form onSubmit={handleSectionSubmit} className="space-y-6">
+                            <div className="space-y-2">
+                                <Label
+                                    htmlFor="section_title"
+                                    className="ml-1 text-[10px] font-black tracking-widest text-slate-400 uppercase"
+                                >
+                                    Section Title
+                                </Label>
+                                <Input
+                                    id="section_title"
+                                    value={sectionTitle}
+                                    onChange={(e) => setSectionTitle(e.target.value)}
+                                    placeholder="e.g. Introduction to Laravel"
+                                    className="h-14 rounded-2xl border-none bg-slate-50 font-bold text-slate-800 transition-all placeholder:text-slate-300 focus:ring-2 focus:ring-indigo-500/20"
+                                    required
+                                    autoFocus
+                                />
+                            </div>
+                            <DialogFooter>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => setShowSectionModal(false)}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button type="submit" variant="create">
+                                    <Save className="mr-2 h-4 w-4" />
+                                    {editingSection ? 'Update' : 'Create'}
+                                </Button>
+                            </DialogFooter>
+                        </form>
+                    </DialogContent>
+                </Dialog>
             </div>
 
             <ConfirmationModal
@@ -412,6 +736,30 @@ export default function AdminCourseLessonsIndex({ course, sections, unsectionedL
                 confirmText="Delete"
                 isDestructive={true}
             />
-        </AppLayout>
-    );
+
+            <ConfirmationModal
+                isOpen={!!quizToDelete}
+                onClose={() => setQuizToDelete(null)}
+                onConfirm={handleDeleteQuiz}
+                title="Delete Quiz"
+                description={`Are you sure you want to delete "${quizToDelete?.title}"? This will remove all questions and student attempts.`}
+                confirmText="Delete"
+                isDestructive={true}
+            />
+
+            <AdminQuizModal
+                 isOpen={isQuizModalOpen}
+                 onClose={() => {
+                     setIsQuizModalOpen(false);
+                     setEditingQuiz(null);
+                 }}
+                 quiz={editingQuiz as any}
+                 courses={[{ 
+                     id: course.id, 
+                     title: course.title,
+                     instructor_name: course.instructor?.name 
+                 } as any]}
+             />
+         </AppLayout>
+     );
 }

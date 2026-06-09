@@ -28,6 +28,11 @@ class MailConfigServiceProvider extends ServiceProvider
                     'mail.mailers.smtp.encryption' => $emailSettings['smtp_encryption'],
                     'mail.from.address' => $emailSettings['from_address'],
                     'mail.from.name' => $emailSettings['from_name'],
+                    'mail.mailers.smtp.timeout' => 10,
+                    'mail.mailers.smtp.stream' => [
+                        'ssl' => ['verify_peer' => false, 'verify_peer_name' => false],
+                        'socket' => ['bindto' => '0:0'],
+                    ],
                 ]);
             }
         } catch (\Exception $e) {

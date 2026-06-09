@@ -1,10 +1,29 @@
-import * as Dialog from '@radix-ui/react-dialog';
-import { Head, router } from '@inertiajs/react';
-import { Plus, Edit, Trash2, Power, PowerOff, X, FolderOpen } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import ConfirmationModal from '@/components/ui/confirmation-modal';
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter,
+} from '@/components/ui/dialog';
 import { PaginationLinks } from '@/components/ui/pagination-links';
+import { DataTable } from '@/components/ui/data-table';
+import { Head, router, useForm, usePage } from '@inertiajs/react';
+import { useNotification } from '@/contexts/notification-context';
+import {
+    Plus,
+    Edit,
+    Trash2,
+    Power,
+    PowerOff,
+    FolderOpen,
+    Search,
+} from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 import { useActionMessages } from '@/hooks/use-action-messages';
 import AppLayout from '@/layouts/app-layout';
 
@@ -35,20 +54,39 @@ interface Props {
     };
 }
 
-export default function CourseCategoriesIndex({ categories: initialCategories, filters = {} }: Props) {
-    const [categories, setCategories] = useState<Category[]>(initialCategories.data || []);
+export default function CourseCategoriesIndex({
+    categories: initialCategories,
+    filters = {},
+}: Props) {
+    const [categories, setCategories] = useState<Category[]>(
+        initialCategories.data || [],
+    );
     const [search, setSearch] = useState(filters.search || '');
     const [showModal, setShowModal] = useState(false);
-    const [editingCategory, setEditingCategory] = useState<Category | null>(null);
-    const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
-    const [loading, setLoading] = useState(false);
-    const [formData, setFormData] = useState({
+    const [editingCategory, setEditingCategory] = useState<Category | null>(
+        null,
+    );
+    const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(
+        null,
+    );
+    const categoryMessages = useActionMessages('Category');
+    const { showSuccess, showError } = useNotification();
+    const { props: { flash } } = usePage<any>();
+
+    useEffect(() => {
+        if (flash.success) {
+            showSuccess(flash.success);
+        }
+        if (flash.error) {
+            showError(flash.error);
+        }
+    }, [flash]);
+
+    const { data, setData, post, put, delete: destroy, processing, errors, reset } = useForm({
         name: '',
         description: '',
         status: true,
     });
-    const [errors, setErrors] = useState<any>({});
-    const categoryMessages = useActionMessages('Category');
 
     useEffect(() => {
         setCategories(initialCategories.data || []);
@@ -59,21 +97,20 @@ export default function CourseCategoriesIndex({ categories: initialCategories, f
     }, [filters.search]);
 
     const handleSearch = () => {
-        router.get('/admin/course-categories', {
-            search: search || undefined,
-        }, {
-            preserveState: true,
-            replace: true,
-        });
+        router.get(
+            '/admin/course-categories',
+            {
+                search: search || undefined,
+            },
+            {
+                preserveState: true,
+                replace: true,
+            },
+        );
     };
 
     const resetForm = () => {
-        setFormData({
-            name: '',
-            description: '',
-            status: true,
-        });
-        setErrors({});
+        reset();
         setEditingCategory(null);
     };
 
@@ -83,338 +120,279 @@ export default function CourseCategoriesIndex({ categories: initialCategories, f
     };
 
     const openEditModal = (category: Category) => {
-        setFormData({
+        reset();
+        setData({
             name: category.name,
             description: category.description || '',
             status: category.status,
         });
         setEditingCategory(category);
-        setErrors({});
         setShowModal(true);
     };
 
     const closeModal = () => {
         setShowModal(false);
-        resetForm();
+        reset();
     };
 
-    const getCsrfToken = () => {
-        const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-
-        return token || '';
-    };
-
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        setLoading(true);
-        setErrors({});
-
-        try {
-            const url = editingCategory 
-                ? `/admin/course-categories/${editingCategory.id}`
-                : '/admin/course-categories';
-            
-            const method = editingCategory ? 'PUT' : 'POST';
-            
-            const response = await fetch(url, {
-                method: method,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': getCsrfToken(),
-                    'Accept': 'application/json',
+        if (editingCategory) {
+            put(`/admin/course-categories/${editingCategory.id}`, {
+                onSuccess: () => {
+                    closeModal();
                 },
-                body: JSON.stringify(formData),
+                onError: () => {},
             });
-
-            const data = await response.json();
-
-            if (data.success) {
-                if (editingCategory) {
-                    setCategories(categories.map(cat => 
-                        cat.id === editingCategory.id ? data.category : cat
-                    ));
-                } else {
-                    setCategories([data.category, ...categories]);
-                }
-                
-                categoryMessages.success(editingCategory ? 'update' : 'create');
-                closeModal();
-            } else {
-                if (response.status === 422 && data.errors) {
-                    setErrors(data.errors);
-                } else {
-                    categoryMessages.error(editingCategory ? 'update' : 'create', undefined, data.message);
-                }
-            }
-        } catch (error: any) {
-            console.error('Network error:', error);
-            categoryMessages.error(editingCategory ? 'update' : 'create');
-        } finally {
-            setLoading(false);
+        } else {
+            post('/admin/course-categories', {
+                onSuccess: () => {
+                    closeModal();
+                },
+                onError: () => {},
+            });
         }
     };
 
-    const handleDelete = async () => {
+    const handleDelete = () => {
         if (!categoryToDelete) return;
-
-        try {
-            const response = await fetch(`/admin/course-categories/${categoryToDelete.id}`, {
-                method: 'DELETE',
-                headers: {
-                    'X-CSRF-TOKEN': getCsrfToken(),
-                    'Accept': 'application/json',
-                },
-            });
-            
-            const data = await response.json();
-            
-            if (data.success) {
-                setCategories(categories.filter(cat => cat.id !== categoryToDelete.id));
-                categoryMessages.success('delete');
-            } else {
-                categoryMessages.error('delete', undefined, data.message);
-            }
-        } catch (error: any) {
-            console.error('Delete error:', error);
-            categoryMessages.error('delete');
-        } finally {
-            setCategoryToDelete(null);
-        }
+        destroy(`/admin/course-categories/${categoryToDelete.id}`, {
+            onSuccess: () => setCategoryToDelete(null),
+        });
     };
 
     const handleToggleStatus = async (category: Category) => {
-        try {
-            const response = await fetch(`/admin/course-categories/${category.id}/toggle-status`, {
-                method: 'PATCH',
-                headers: {
-                    'X-CSRF-TOKEN': getCsrfToken(),
-                    'Accept': 'application/json',
-                },
-            });
-            
-            const data = await response.json();
-            
-            if (data.success) {
-                setCategories(categories.map(cat => 
-                    cat.id === category.id ? data.category : cat
-                ));
-                categoryMessages.success('toggle');
-            } else {
-                categoryMessages.error('toggle', undefined, data.message);
-            }
-        } catch (error: any) {
-            console.error('Toggle error:', error);
-            categoryMessages.error('toggle');
-        }
+        router.patch(
+            `/admin/course-categories/${category.id}/toggle-status`,
+            {},
+            {
+                onSuccess: () => {},
+
+                onError: () => {},
+            },
+        );
     };
 
+    const columns = [
+        {
+            key: 'name',
+            label: 'Name',
+            render: (value: string, category: Category) => (
+                <div className="text-sm font-bold text-slate-700">
+                    {category.name}
+                </div>
+            ),
+        },
+        {
+            key: 'description',
+            label: 'Description',
+            render: (value: string, category: Category) => (
+                <div className="max-w-xs truncate text-sm text-slate-500">
+                    {category.description || 'No description'}
+                </div>
+            ),
+        },
+        {
+            key: 'status',
+            label: 'Status',
+            render: (value: string, category: Category) => (
+                <span
+                    className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
+                        category.status
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-red-100 text-red-800'
+                    }`}
+                >
+                    {category.status_label}
+                </span>
+            ),
+        },
+        {
+            key: 'created_at',
+            label: 'Created',
+            render: (value: string, category: Category) => (
+                <span className="text-sm whitespace-nowrap text-slate-500">
+                    {category.created_at}
+                </span>
+            ),
+        },
+        {
+            key: 'actions',
+            label: 'Actions',
+            render: (value: string, category: Category) => (
+                <div className="flex items-center space-x-2">
+                    <button
+                        onClick={() => openEditModal(category)}
+                        className="rounded-lg p-2 text-indigo-600 transition-colors hover:bg-indigo-50 hover:text-indigo-900"
+                        title="Edit Category"
+                    >
+                        <Edit className="h-4 w-4" />
+                    </button>
+                    <button
+                        onClick={() => handleToggleStatus(category)}
+                        className={`rounded-lg p-2 transition-colors ${
+                            category.status
+                                ? 'text-amber-600 hover:bg-amber-50 hover:text-amber-900'
+                                : 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-900'
+                        }`}
+                        title={category.status ? 'Deactivate' : 'Activate'}
+                    >
+                        {category.status ? (
+                            <PowerOff className="h-4 w-4" />
+                        ) : (
+                            <Power className="h-4 w-4" />
+                        )}
+                    </button>
+                    <button
+                        onClick={() => setCategoryToDelete(category)}
+                        className="rounded-lg p-2 text-red-600 transition-colors hover:bg-red-50 hover:text-red-900"
+                        title="Delete Category"
+                    >
+                        <Trash2 className="h-4 w-4" />
+                    </button>
+                </div>
+            ),
+        },
+    ];
+
     return (
-        <AppLayout breadcrumbs={[
-            { title: 'Dashboard', href: '/admin/dashboard' },
-            { title: 'Course Categories', href: '/admin/course-categories' }
-        ]}>
+        <AppLayout
+            breadcrumbs={[
+                { title: 'Dashboard', href: '/admin/dashboard' },
+                {
+                    title: 'Course Categories',
+                    href: '/admin/course-categories',
+                },
+            ]}
+        >
             <Head title="Course Categories" />
-            
+
             <div className="space-y-6">
                 {/* Header */}
                 <div className="flex items-center justify-between">
                     <div>
-                        <h1 className="text-3xl font-bold text-gray-900">Course Categories</h1>
-                        <p className="text-gray-600">Manage course categories for organizing courses</p>
+                        <h1 className="page-title text-gray-900">
+                            Course Categories
+                        </h1>
+                        <p className="text-gray-600">
+                            Manage course categories for organizing courses
+                        </p>
                     </div>
-                    <Button
-                        onClick={openCreateModal}
-                        variant="create"
-                    >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add Category
+                    <Button onClick={openCreateModal} variant="create">
+                        <Plus className="mr-2 h-4 w-4" />
+                        Create Category
                     </Button>
                 </div>
 
-                <div className="bg-white shadow rounded-lg p-4">
+                <div className="rounded-lg bg-white p-4 shadow">
                     <div className="flex gap-4">
                         <input
                             type="text"
                             placeholder="Search categories..."
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                            className="flex-1 border border-gray-300 rounded-md px-3 py-2"
+                            onKeyDown={(e) =>
+                                e.key === 'Enter' && handleSearch()
+                            }
+                            className="flex-1 rounded-md border border-gray-300 px-3 py-2"
                         />
-                        <button
-                            onClick={handleSearch}
-                            className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md"
-                        >
+                        <Button onClick={handleSearch}>
+                            <Search className="mr-2 h-4 w-4" />
                             Search
-                        </button>
-                        <button
+                        </Button>
+                        <Button
+                            variant="outline"
                             onClick={() => {
                                 setSearch('');
                                 router.get('/admin/course-categories');
                             }}
-                            className="bg-gray-300 hover:bg-gray-400 text-gray-700 px-4 py-2 rounded-md"
                         >
-                            Reset
-                        </button>
+                            Reset Filters
+                        </Button>
                     </div>
                 </div>
 
                 {/* Categories Table */}
-                <div className="bg-white shadow rounded-lg overflow-hidden">
-                    <div className="px-6 py-4 border-b border-gray-200">
-                        <h2 className="text-xl font-semibold text-gray-900">Categories ({initialCategories.total})</h2>
-                    </div>
-                    
-                    {categories.length > 0 ? (
-                        <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-gray-200">
-                                <thead className="bg-gray-50">
-                                    <tr>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="bg-white divide-y divide-gray-200">
-                                    {categories.map((category) => (
-                                        <tr key={category.id} className={`hover:bg-gray-50 ${category.is_deleted ? 'opacity-50' : ''}`}>
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <div className="text-sm font-medium text-gray-900">{category.name}</div>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <div className="text-sm text-gray-500 max-w-xs truncate">
-                                                    {category.description || 'No description'}
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                                    category.status 
-                                                        ? 'bg-green-100 text-green-800' 
-                                                        : 'bg-red-100 text-red-800'
-                                                }`}>
-                                                    {category.status_label}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                {category.created_at}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                                {!category.is_deleted && (
-                                                    <div className="flex items-center space-x-3">
-                                                        <button
-                                                            onClick={() => openEditModal(category)}
-                                                            className="text-indigo-600 hover:text-indigo-900 p-2 rounded hover:bg-indigo-50 transition-colors"
-                                                            title="Edit Category"
-                                                        >
-                                                            <Edit className="h-4 w-4" />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleToggleStatus(category)}
-                                                            className={`p-2 rounded transition-colors ${
-                                                                category.status 
-                                                                    ? 'text-red-600 hover:text-red-900 hover:bg-red-50' 
-                                                                    : 'text-green-600 hover:text-green-900 hover:bg-green-50'
-                                                            }`}
-                                                            title={category.status ? 'Deactivate' : 'Activate'}
-                                                        >
-                                                            {category.status ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
-                                                        </button>
-                                                        <button
-                                                            onClick={() => setCategoryToDelete(category)}
-                                                            className="text-red-600 hover:text-red-900 p-2 rounded hover:bg-red-50 transition-colors"
-                                                            title="Delete Category"
-                                                        >
-                                                            <Trash2 className="h-4 w-4" />
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    ) : (
-                        <div className="text-center py-12">
-                            <div className="text-gray-400 mb-4">
-                                <FolderOpen className="h-12 w-12 mx-auto" />
-                            </div>
-                            <p className="text-gray-500 text-lg mb-4">No categories found</p>
-                            <Button
-                                onClick={openCreateModal}
-                                variant="create"
-                            >
-                                Create First Category
-                            </Button>
-                        </div>
-                    )}
-                </div>
-
-                {categories.length > 0 ? (
-                    <PaginationLinks
-                        links={initialCategories.links}
-                        onPageChange={(url) => router.get(url)}
-                    />
-                ) : null}
+                <Card>
+                    <CardContent className="p-0">
+                        <DataTable
+                            columns={columns}
+                            data={categories}
+                            title={`Categories (${initialCategories.total})`}
+                            emptyMessage="No categories found"
+                            paginationLinks={initialCategories.links}
+                            onPageChange={(url) => router.get(url)}
+                            emptyAction={
+                                <Button onClick={openCreateModal} variant="create">
+                                    Create First Category
+                                </Button>
+                            }
+                        />
+                    </CardContent>
+                </Card>
             </div>
 
             {/* Modal */}
-            <Dialog.Root open={showModal} onOpenChange={(open) => !open && closeModal()}>
-                <Dialog.Portal>
-                    <Dialog.Overlay className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-md data-[state=open]:animate-overlay-show" />
-                    <Dialog.Content className="fixed top-1/2 left-1/2 z-[1001] w-[90vw] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white shadow-lg data-[state=open]:animate-content-show focus:outline-none max-h-[90vh] overflow-y-auto">
-                        <form onSubmit={handleSubmit}>
-                            {/* Modal header */}
-                            <div className="flex items-center justify-between p-6 border-b sticky top-0 bg-white z-10">
-                                <Dialog.Title className="text-xl font-bold text-gray-900">
-                                    {editingCategory ? 'Edit Category' : 'Add New Category'}
-                                </Dialog.Title>
-                                <Dialog.Close asChild>
-                                    <button
-                                        type="button"
-                                        className="text-gray-400 hover:text-gray-600 p-1"
-                                    >
-                                        <X className="h-5 w-5" />
-                                    </button>
-                                </Dialog.Close>
-                            </div>
-                            
-                            {/* Modal body */}
-                            <div className="p-6 space-y-4">
+            <Dialog open={showModal} onOpenChange={(open) => !open && closeModal()}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>
+                            {editingCategory ? 'Edit Category' : 'Create New Category'}
+                        </DialogTitle>
+                        <DialogDescription>
+                            {editingCategory ? 'Update the category details.' : 'Fill in the details to create a new course category.'}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleSubmit}>
+                        {/* Modal body */}
+                        <div className="space-y-4 py-2">
                                 {/* Name field */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Category Name <span className="text-red-500">*</span>
+                                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                                        Category Name{' '}
+                                        <span className="text-red-500">*</span>
                                     </label>
                                     <input
                                         type="text"
-                                        value={formData.name}
-                                        onChange={(e) => setFormData({...formData, name: e.target.value})}
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                                        value={data.name}
+                                        onChange={(e) =>
+                                            setData(
+                                                'name',
+                                                e.target.value,
+                                            )
+                                        }
+                                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
                                         placeholder="Enter category name"
                                         required
                                     />
                                     {errors.name && (
-                                        <p className="text-red-600 text-sm mt-1">{errors.name[0]}</p>
+                                        <p className="mt-1 text-sm text-red-600">
+                                            {errors.name}
+                                        </p>
                                     )}
                                 </div>
 
                                 {/* Description field */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    <label className="mb-2 block text-sm font-medium text-gray-700">
                                         Description
                                     </label>
                                     <textarea
-                                        value={formData.description}
-                                        onChange={(e) => setFormData({...formData, description: e.target.value})}
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                                        value={data.description}
+                                        onChange={(e) =>
+                                            setData(
+                                                'description',
+                                                e.target.value,
+                                            )
+                                        }
+                                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
                                         rows={3}
                                         placeholder="Enter category description (optional)"
                                     />
                                     {errors.description && (
-                                        <p className="text-red-600 text-sm mt-1">{errors.description[0]}</p>
+                                        <p className="mt-1 text-sm text-red-600">
+                                            {errors.description}
+                                        </p>
                                     )}
                                 </div>
 
@@ -423,46 +401,50 @@ export default function CourseCategoriesIndex({ categories: initialCategories, f
                                     <label className="flex items-center">
                                         <input
                                             type="checkbox"
-                                            checked={formData.status}
-                                            onChange={(e) => setFormData({...formData, status: e.target.checked})}
+                                            checked={data.status}
+                                            onChange={(e) =>
+                                                setData(
+                                                    'status',
+                                                    e.target.checked,
+                                                )
+                                            }
                                             className="rounded border-gray-300 text-blue-600"
                                         />
-                                        <span className="ml-2 text-sm text-gray-700 font-medium">Active</span>
+                                        <span className="ml-2 text-sm font-medium text-gray-700">
+                                            Active
+                                        </span>
                                     </label>
                                 </div>
                             </div>
-                            
-                            {/* Modal footer */}
-                            <div className="flex justify-end space-x-3 p-6 border-t bg-gray-50 rounded-b-2xl sticky bottom-0">
+
+                        <DialogFooter className="mt-4">
                                 <Button
                                     type="button"
                                     variant="outline"
                                     onClick={closeModal}
-                                    className="rounded-full px-6"
                                 >
                                     Cancel
                                 </Button>
-                                <Button
-                                    type="submit"
-                                    disabled={loading}
-                                    className="rounded-full px-6"
-                                >
-                                    {loading ? 'Saving...' : (editingCategory ? 'Update' : 'Create')}
+                                <Button type="submit" disabled={processing}>
+                                    {processing
+                                        ? (editingCategory ? 'Updating...' : 'Creating...')
+                                        : editingCategory
+                                          ? 'Update Category'
+                                          : 'Create Category'}
                                 </Button>
-                            </div>
-                        </form>
-                    </Dialog.Content>
-                </Dialog.Portal>
-            </Dialog.Root>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
 
             <ConfirmationModal
                 isOpen={!!categoryToDelete}
                 onClose={() => setCategoryToDelete(null)}
                 onConfirm={handleDelete}
                 title="Delete Category"
-                description={`Are you sure you want to delete "${categoryToDelete?.name}"? This action cannot be undone.`}
+                message={`Are you sure you want to delete the category "${categoryToDelete?.name}"? This action cannot be undone.`}
                 confirmText="Delete"
-                isDestructive={true}
+                type="danger"
             />
         </AppLayout>
     );

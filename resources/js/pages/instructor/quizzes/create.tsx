@@ -1,11 +1,30 @@
 import { Head, useForm, Link } from '@inertiajs/react';
-import { Plus, Trash2, HelpCircle, Settings, Save, ListChecks } from 'lucide-react';
+import {
+    Plus,
+    Trash2,
+    HelpCircle,
+    Settings,
+    Save,
+    ListChecks,
+} from 'lucide-react';
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+} from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { useActionMessages } from '@/hooks/use-action-messages';
@@ -32,6 +51,7 @@ export default function CreateQuiz({ courses }: Props) {
         passing_score: 70,
         max_attempts: 3,
         is_final_quiz: false,
+        is_active: true,
     });
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -48,24 +68,30 @@ export default function CreateQuiz({ courses }: Props) {
             },
             onFinish: () => {
                 setIsSubmitting(false);
-            }
+            },
         });
     };
 
     return (
-        <AppLayout breadcrumbs={[
-            { title: 'Dashboard', href: '/instructor/dashboard' },
-            { title: 'My Quizzes', href: '/instructor/quizzes' },
-            { title: 'Create Quiz', href: '/instructor/quizzes/create' }
-        ]}>
+        <AppLayout
+            breadcrumbs={[
+                { title: 'Dashboard', href: '/instructor/dashboard' },
+                { title: 'Quiz Management', href: '/instructor/quizzes' },
+                { title: 'Create Quiz', href: '/instructor/quizzes/create' },
+            ]}
+        >
             <Head title="Create Quiz" />
-            
-            <div className="max-w-4xl mx-auto space-y-6">
+
+            <div className="mx-auto max-w-4xl space-y-6">
                 {/* Header */}
                 <div className="flex items-center gap-4">
                     <div>
-                        <h1 className="text-3xl font-bold text-gray-900">Create New Quiz</h1>
-                        <p className="text-gray-600">Create a quiz for your course</p>
+                        <h1 className="page-title text-gray-900">
+                            Create New Quiz
+                        </h1>
+                        <p className="text-gray-600">
+                            Create a quiz for your course
+                        </p>
                     </div>
                 </div>
 
@@ -79,41 +105,66 @@ export default function CreateQuiz({ courses }: Props) {
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                 <div className="space-y-2">
-                                    <Label htmlFor="title">Quiz Title *</Label>
+                                    <Label htmlFor="title">
+                                        Quiz Title{' '}
+                                        <span className="text-red-500">*</span>
+                                    </Label>
                                     <Input
                                         id="title"
                                         type="text"
                                         value={data.title}
-                                        onChange={(e) => setData('title', e.target.value)}
+                                        onChange={(e) =>
+                                            setData('title', e.target.value)
+                                        }
                                         placeholder="Enter quiz title"
-                                        className={errors.title ? 'border-red-500' : ''}
+                                        className={
+                                            errors.title ? 'border-red-500' : ''
+                                        }
                                     />
                                     {errors.title && (
-                                        <p className="text-sm text-red-600">{errors.title}</p>
+                                        <p className="text-sm text-red-600">
+                                            {errors.title}
+                                        </p>
                                     )}
                                 </div>
 
                                 <div className="space-y-2">
-                                    <Label htmlFor="course_id">Course *</Label>
+                                    <Label htmlFor="course_id">
+                                        Course{' '}
+                                        <span className="text-red-500">*</span>
+                                    </Label>
                                     <Select
                                         value={data.course_id}
-                                        onValueChange={(value) => setData('course_id', value)}
+                                        onValueChange={(value) =>
+                                            setData('course_id', value)
+                                        }
                                     >
-                                        <SelectTrigger className={errors.course_id ? 'border-red-500' : ''}>
+                                        <SelectTrigger
+                                            className={
+                                                errors.course_id
+                                                    ? 'border-red-500'
+                                                    : ''
+                                            }
+                                        >
                                             <SelectValue placeholder="Select a course" />
                                         </SelectTrigger>
                                         <SelectContent>
                                             {courses.map((course) => (
-                                                <SelectItem key={course.id} value={course.id.toString()}>
+                                                <SelectItem
+                                                    key={course.id}
+                                                    value={course.id.toString()}
+                                                >
                                                     {course.title}
                                                 </SelectItem>
                                             ))}
                                         </SelectContent>
                                     </Select>
                                     {errors.course_id && (
-                                        <p className="text-sm text-red-600">{errors.course_id}</p>
+                                        <p className="text-sm text-red-600">
+                                            {errors.course_id}
+                                        </p>
                                     )}
                                 </div>
                             </div>
@@ -123,13 +174,21 @@ export default function CreateQuiz({ courses }: Props) {
                                 <Textarea
                                     id="description"
                                     value={data.description}
-                                    onChange={(e) => setData('description', e.target.value)}
+                                    onChange={(e) =>
+                                        setData('description', e.target.value)
+                                    }
                                     placeholder="Enter quiz description (optional)"
                                     rows={3}
-                                    className={errors.description ? 'border-red-500' : ''}
+                                    className={
+                                        errors.description
+                                            ? 'border-red-500'
+                                            : ''
+                                    }
                                 />
                                 {errors.description && (
-                                    <p className="text-sm text-red-600">{errors.description}</p>
+                                    <p className="text-sm text-red-600">
+                                        {errors.description}
+                                    </p>
                                 )}
                             </div>
                         </CardContent>
@@ -144,68 +203,136 @@ export default function CreateQuiz({ courses }: Props) {
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                                 <div className="space-y-2">
-                                    <Label htmlFor="time_limit">Time Limit (minutes)</Label>
+                                    <Label htmlFor="time_limit">
+                                        Time Limit (minutes)
+                                    </Label>
                                     <Input
                                         id="time_limit"
                                         type="number"
                                         min="1"
                                         value={data.time_limit}
-                                        onChange={(e) => setData('time_limit', e.target.value)}
+                                        onChange={(e) =>
+                                            setData(
+                                                'time_limit',
+                                                e.target.value,
+                                            )
+                                        }
                                         placeholder="No time limit"
-                                        className={errors.time_limit ? 'border-red-500' : ''}
+                                        className={
+                                            errors.time_limit
+                                                ? 'border-red-500'
+                                                : ''
+                                        }
                                     />
                                     {errors.time_limit && (
-                                        <p className="text-sm text-red-600">{errors.time_limit}</p>
+                                        <p className="text-sm text-red-600">
+                                            {errors.time_limit}
+                                        </p>
                                     )}
-                                    <p className="text-xs text-gray-500">Leave empty for no time limit</p>
+                                    <p className="text-xs text-gray-500">
+                                        Leave empty for no time limit
+                                    </p>
                                 </div>
 
                                 <div className="space-y-2">
-                                    <Label htmlFor="passing_score">Passing Score (%) *</Label>
+                                    <Label htmlFor="passing_score">
+                                        Passing Score (%) *
+                                    </Label>
                                     <Input
                                         id="passing_score"
                                         type="number"
                                         min="0"
                                         max="100"
                                         value={data.passing_score}
-                                        onChange={(e) => setData('passing_score', parseInt(e.target.value) || 0)}
-                                        className={errors.passing_score ? 'border-red-500' : ''}
+                                        onChange={(e) =>
+                                            setData(
+                                                'passing_score',
+                                                parseInt(e.target.value) || 0,
+                                            )
+                                        }
+                                        className={
+                                            errors.passing_score
+                                                ? 'border-red-500'
+                                                : ''
+                                        }
                                     />
                                     {errors.passing_score && (
-                                        <p className="text-sm text-red-600">{errors.passing_score}</p>
+                                        <p className="text-sm text-red-600">
+                                            {errors.passing_score}
+                                        </p>
                                     )}
                                 </div>
 
                                 <div className="space-y-2">
-                                    <Label htmlFor="max_attempts">Max Attempts *</Label>
+                                    <Label htmlFor="max_attempts">
+                                        Maximum Attempts *
+                                    </Label>
                                     <Input
                                         id="max_attempts"
                                         type="number"
                                         min="1"
-                                        max="10"
                                         value={data.max_attempts}
-                                        onChange={(e) => setData('max_attempts', parseInt(e.target.value) || 1)}
-                                        className={errors.max_attempts ? 'border-red-500' : ''}
+                                        onChange={(e) =>
+                                            setData(
+                                                'max_attempts',
+                                                parseInt(e.target.value) || 1,
+                                            )
+                                        }
+                                        className={
+                                            errors.max_attempts
+                                                ? 'border-red-500'
+                                                : ''
+                                        }
                                     />
                                     {errors.max_attempts && (
-                                        <p className="text-sm text-red-600">{errors.max_attempts}</p>
+                                        <p className="text-sm text-red-600">
+                                            {errors.max_attempts}
+                                        </p>
                                     )}
                                 </div>
                             </div>
 
-                            <div className="flex items-center space-x-2">
-                                <Switch
+                            <div className="space-y-4">
+                                <div className="flex items-center space-x-2">
+                                    <Switch
+                                        id="is_final_quiz"
                                         checked={data.is_final_quiz}
-                                        onCheckedChange={(checked) => setData('is_final_quiz', checked)}
+                                        onCheckedChange={(checked) =>
+                                            setData('is_final_quiz', checked)
+                                        }
                                     />
-                                <Label htmlFor="is_final_quiz" className="text-sm font-medium">
-                                    Final Quiz
-                                </Label>
-                                <p className="text-xs text-gray-500 ml-2">
-                                    Students must pass this quiz to complete the course
-                                </p>
+                                    <Label
+                                        htmlFor="is_final_quiz"
+                                        className="text-sm font-medium"
+                                    >
+                                        Final Quiz
+                                    </Label>
+                                    <p className="ml-2 text-xs text-gray-500">
+                                        Students must pass this quiz to complete
+                                        the course
+                                    </p>
+                                </div>
+
+                                <div className="flex items-center space-x-2">
+                                    <Switch
+                                        id="is_active"
+                                        checked={data.is_active}
+                                        onCheckedChange={(checked) =>
+                                            setData('is_active', checked)
+                                        }
+                                    />
+                                    <Label
+                                        htmlFor="is_active"
+                                        className="text-sm font-medium"
+                                    >
+                                        Active
+                                    </Label>
+                                    <p className="ml-2 text-xs text-gray-500">
+                                        Students can only take active quizzes
+                                    </p>
+                                </div>
                             </div>
                         </CardContent>
                     </Card>
@@ -226,7 +353,9 @@ export default function CreateQuiz({ courses }: Props) {
                             className="flex items-center gap-2"
                         >
                             <Save className="h-4 w-4" />
-                            {processing || isSubmitting ? 'Creating...' : 'Create Quiz'}
+                            {processing || isSubmitting
+                                ? 'Creating...'
+                                : 'Create Quiz'}
                         </Button>
                     </div>
                 </form>

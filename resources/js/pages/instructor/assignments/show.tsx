@@ -1,281 +1,557 @@
-import { Head, Link, useForm } from '@inertiajs/react';
-import { CheckCircle, Clock, Download, FileText, Send, User, MessageSquare, Award } from 'lucide-react';
+import { Head, Link, useForm, router } from '@inertiajs/react';
+import {
+    CheckCircle,
+    Clock,
+    Download,
+    FileText,
+    Send,
+    User,
+    MessageSquare,
+    Award,
+    ArrowLeft,
+    Star,
+    Users,
+    XCircle,
+} from 'lucide-react';
 import React, { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
-import { Textarea } from '@/components/ui/textarea';
-import { Input } from '@/components/ui/input';
+import {
+    Card,
+    CardContent,
+    CardHeader,
+    CardTitle,
+    CardDescription,
+} from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/app-layout';
 import { cn } from '@/lib/utils';
 import { useActionMessages } from '@/hooks/use-action-messages';
+import ConfirmationModal from '@/components/ui/confirmation-modal';
 
 interface Submission {
     id: number;
     student_name: string;
+    student_email?: string;
     submitted_at: string;
     status: string;
     score: number | null;
-    max_score: number;
+    percentage?: number;
     file_path: string | null;
+    file_original_name?: string;
+    file_url?: string;
+    files?: Array<{
+        path: string;
+        original_name: string;
+        url: string;
+    }>;
     submission_text: string | null;
     feedback: string | null;
+    is_late?: boolean;
+    is_passed?: boolean;
+    is_graded?: boolean;
+    graded_at?: string;
+    resubmission_count?: number;
+    last_reopened_at?: string;
 }
 
-interface Lesson {
+interface Assignment {
     id: number;
     title: string;
-    course_title: string;
-    assignment_data: {
-        instructions: string;
-        max_score: number;
-    };
+    instructions: string;
+    max_score: number;
+    passing_score: number;
+}
+
+interface Course {
+    id: number;
+    title: string;
 }
 
 interface Props {
-    lesson: Lesson;
+    course: Course;
+    assignment: Assignment;
     submissions: Submission[];
 }
 
-export default function AssignmentShow({ lesson, submissions }: Props) {
+export default function AssignmentShow({ course, assignment, submissions }: Props) {
+    const assignmentMessages = useActionMessages('Submission');
+    
+    if (!course || !assignment) {
+        return (
+            <AppLayout>
+                <Head title="Assignment Not Found" />
+                <div className="flex h-[400px] flex-col items-center justify-center">
+                    <FileText className="mb-4 h-12 w-12 text-gray-400" />
+                    <h3 className="text-lg font-medium text-gray-900">Assignment not found</h3>
+                    <p className="text-gray-500">The assignment you're looking for doesn't exist.</p>
+                    <Link
+                        href="/instructor/courses"
+                        className="mt-4 flex h-9 w-9 items-center justify-center rounded-full bg-gray-200 text-gray-700 transition-colors hover:bg-gray-300"
+                        aria-label="Back to Courses"
+                    >
+                        <ArrowLeft className="h-4 w-4" />
+                    </Link>
+                </div>
+            </AppLayout>
+        );
+    }
+
     const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(
-        submissions.length > 0 ? submissions[0] : null
+        submissions && submissions.length > 0 ? submissions[0] : null,
     );
-
-    const assignmentMessages = useActionMessages('Assignment');
-
+    const [showRejectModal, setShowRejectModal] = useState(false);
+    const [showGradeModal, setShowGradeModal] = useState(false);
+    
     const { data, setData, post, processing, errors, reset } = useForm({
-        score: selectedSubmission?.score?.toString() || '',
-        feedback: selectedSubmission?.feedback || '',
+        score: '',
+        feedback: '',
+    });
+
+    const { data: rejectData, setData: setRejectData, post: postReject, processing: rejectProcessing, errors: rejectErrors, reset: resetReject } = useForm({
+        feedback: '',
     });
 
     const handleSelectSubmission = (submission: Submission) => {
         setSelectedSubmission(submission);
         setData({
             score: submission.score?.toString() || '',
-            feedback: submission.feedback || '',
+            feedback: submission.status === 'Graded' ? (submission.feedback || '') : '',
+        });
+        setRejectData({
+            feedback: submission.status === 'Rejected' ? (submission.feedback || '') : '',
         });
     };
 
-    const submitGrade = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!selectedSubmission) return;
+    const handleRejectSubmission = () => {
+        if (!selectedSubmission || !course?.id || !assignment?.id) return;
 
-        post(`/instructor/submissions/${selectedSubmission.id}/grade`, {
+        postReject(`/instructor/assignments/${assignment.id}/submissions/${selectedSubmission.id}/reject`, {
             onSuccess: () => {
-                // Update the selected submission in the local list
-                const updatedSubmissions = [...submissions];
-                const index = updatedSubmissions.findIndex(s => s.id === selectedSubmission.id);
-                if (index !== -1) {
-                    updatedSubmissions[index] = {
-                        ...selectedSubmission,
-                        score: parseFloat(data.score),
-                        feedback: data.feedback,
-                        status: 'Graded'
-                    };
-                    setSelectedSubmission(updatedSubmissions[index]);
-                }
-                assignmentMessages.success('submit');
+                setShowRejectModal(false);
+                resetReject();
             },
-            onError: () => {
-                assignmentMessages.error('submit');
-            }
+            onError: (errors) => {
+                assignmentMessages.error('reject', errors.feedback || 'Failed to reject submission');
+            },
+            onFinish: () => {
+                router.reload({
+                    only: ['submissions'],
+                    onSuccess: (page) => {
+                        // After reloading, find the updated submission from the new props
+                        const updatedSubmissions = page.props.submissions as Submission[];
+                        // Find the submission that was just rejected (using its ID)
+                        const updatedSelected = updatedSubmissions.find(s => s.id === selectedSubmission.id);
+                        if (updatedSelected) {
+                            setSelectedSubmission(updatedSelected);
+                            // Also update the form data for score/feedback based on the new state
+                            setData({
+                                score: updatedSelected.score?.toString() || '',
+                                feedback: updatedSelected.status === 'Graded' ? (updatedSelected.feedback || '') : '',
+                            });
+                            // And for the reject form data (feedback might have changed if instructor rejected with feedback)
+                            setRejectData({
+                                feedback: updatedSelected.status === 'Rejected' ? (updatedSelected.feedback || '') : '',
+                            });
+                        }
+                    },
+                });
+            },
+        });
+    };
+
+    const handleGradeSubmission = () => {
+        if (!selectedSubmission || !course?.id || !assignment?.id) return;
+
+        post(`/instructor/assignments/${assignment.id}/submissions/${selectedSubmission.id}/grade`, {
+            onSuccess: () => {
+                setShowGradeModal(false);
+            },
+            onError: (errors) => {
+                assignmentMessages.error('grade', errors.score || errors.feedback || 'Failed to grade submission');
+            },
+            onFinish: () => {
+                router.reload({
+                    only: ['submissions'],
+                    onSuccess: (page) => {
+                        const updatedSubmissions = page.props.submissions as Submission[];
+                        const updatedSelected = updatedSubmissions.find(s => s.id === selectedSubmission?.id);
+                        if (updatedSelected) {
+                            setSelectedSubmission(updatedSelected);
+                            setData({
+                                score: updatedSelected.score?.toString() || '',
+                                feedback: updatedSelected.status === 'Graded' ? (updatedSelected.feedback || '') : '',
+                            });
+                        }
+                    },
+                });
+            },
         });
     };
 
     return (
-        <AppLayout breadcrumbs={[
-            { title: 'Dashboard', href: '/instructor/dashboard' },
-            { title: 'Assignments', href: '/instructor/assignments' },
-            { title: lesson.title, href: '#' }
-        ]}>
-            <Head title={`Grading: ${lesson.title}`} />
+        <AppLayout
+            breadcrumbs={[
+                { title: 'Dashboard', href: '/instructor/dashboard' },
+                { title: 'Assignments', href: '/instructor/assignments' },
+                { title: assignment?.title || 'Assignment', href: '#' },
+            ]}
+        >
+            <Head title={`Submissions: ${assignment?.title || 'Assignment'}`} />
 
-            <div className="flex flex-col h-[calc(100vh-12rem)]">
-                {/* Header */}
-                <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-4">
-                        <div>
-                            <h1 className="text-2xl font-black text-slate-900">{lesson.title}</h1>
-                            <p className="text-sm font-bold text-slate-500 uppercase tracking-widest">{lesson.course_title}</p>
+            <div className="space-y-6">
+                {/* Simple Header */}
+                <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+                    <div>
+                        <div className="mb-1 flex items-center gap-2">
+                            <Link
+                                href="/instructor/assignments"
+                                className="text-gray-500 hover:text-gray-700"
+                            >
+                                <ArrowLeft className="h-4 w-4" />
+                            </Link>
+                            <h1 className="text-2xl font-bold text-gray-900">
+                                {assignment?.title || 'Assignment'}
+                            </h1>
                         </div>
+                        <p className="text-gray-500">{course?.title || 'Course'}</p>
                     </div>
                     <div className="flex items-center gap-3">
-                        <Badge className="bg-indigo-50 text-indigo-600 border-none font-bold">
-                            {submissions.filter(s => s.status === 'Submitted').length} Pending
-                        </Badge>
-                        <Badge className="bg-emerald-50 text-emerald-600 border-none font-bold">
-                            {submissions.filter(s => s.status === 'Graded').length} Graded
+                        <Badge variant="outline" className="px-3 py-1">
+                            {submissions?.length || 0} Total Submissions
                         </Badge>
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 overflow-hidden">
-                    {/* Left Sidebar: Submissions List */}
-                    <div className="lg:col-span-3 flex flex-col gap-4 overflow-hidden">
-                        <Card className="border-none shadow-xl rounded-3xl flex-1 flex flex-col overflow-hidden">
-                            <CardHeader className="bg-slate-50/50 border-b border-slate-100 py-4">
-                                <CardTitle className="text-xs font-black text-slate-800 uppercase tracking-widest">Students</CardTitle>
-                            </CardHeader>
-                            <CardContent className="p-0 flex-1 overflow-y-auto">
-                                {submissions.length > 0 ? (
-                                    <div className="divide-y divide-slate-50">
-                                        {submissions.map((submission) => (
-                                            <button
-                                                key={submission.id}
-                                                onClick={() => handleSelectSubmission(submission)}
-                                                className={cn(
-                                                    "w-full text-left p-4 transition-all hover:bg-slate-50 flex flex-col gap-1",
-                                                    selectedSubmission?.id === submission.id ? "bg-indigo-50/50 border-l-4 border-indigo-600 pl-3" : "pl-4"
-                                                )}
-                                            >
-                                                <div className="flex justify-between items-center">
-                                                    <span className="text-sm font-bold text-slate-800 truncate">{submission.student_name}</span>
-                                                    <Badge variant="outline" className={cn(
-                                                        "text-[9px] font-black uppercase tracking-tighter px-1.5 py-0",
-                                                        submission.status === 'Graded' ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-amber-50 text-amber-600 border-amber-100"
-                                                    )}>
-                                                        {submission.status}
-                                                    </Badge>
-                                                </div>
-                                                <span className="text-[10px] font-bold text-slate-400 uppercase">{submission.submitted_at}</span>
-                                            </button>
-                                        ))}
-                                    </div>
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
+                    {/* Left Sidebar: Students List */}
+                    <Card className="lg:col-span-1">
+                        <CardHeader>
+                            <CardTitle className="text-sm font-medium">
+                                Students who submitted
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-0">
+                            <div className="max-h-[600px] divide-y overflow-y-auto">
+                                {submissions && submissions.length > 0 ? (
+                                    submissions.map((submission) => (
+                                        <button
+                                            key={submission.id}
+                                            onClick={() => handleSelectSubmission(submission)}
+                                            className={cn(
+                                                'w-full p-4 text-left transition-colors hover:bg-gray-50',
+                                                selectedSubmission?.id === submission.id
+                                                    ? 'border-r-2 border-indigo-600 bg-indigo-50/30'
+                                                    : '',
+                                            )}
+                                        >
+                                            <div className="mb-1 flex items-center justify-between">
+                                                <span className="truncate text-sm font-medium">
+                                                    {submission.student_name}
+                                                </span>
+                                                <Badge
+                                                    variant="outline"
+                                                    className={`px-1.5 py-0 text-[10px] ${
+                                                        submission.status === 'Graded'
+                                                            ? 'bg-green-50 text-green-600 border-green-100'
+                                                            : submission.status === 'Submitted'
+                                                            ? 'bg-blue-50 text-blue-600 border-blue-100'
+                                                            : submission.status === 'Rejected'
+                                                            ? 'bg-red-50 text-red-600 border-red-100'
+                                                            : 'bg-gray-50 text-gray-600 border-gray-100'
+                                                    }`}
+                                                >
+                                                    {submission.status}
+                                                </Badge>
+                                            </div>
+                                            <span className="text-xs text-gray-500">
+                                                {submission.submitted_at}
+                                            </span>
+                                        </button>
+                                    ))
                                 ) : (
-                                    <div className="p-8 text-center text-slate-400 font-bold italic text-sm">No submissions yet</div>
+                                    <div className="p-8 text-center text-sm text-gray-400">
+                                        <Users className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                                        <p>No submissions yet</p>
+                                    </div>
                                 )}
-                            </CardContent>
-                        </Card>
-                    </div>
+                            </div>
+                        </CardContent>
+                    </Card>
 
-                    {/* Right Side: Side-by-Side Grading UI */}
-                    <div className="lg:col-span-9 flex flex-col gap-6 overflow-hidden">
+                    {/* Main Content: Details */}
+                    <div className="space-y-6 lg:col-span-3">
                         {selectedSubmission ? (
-                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 h-full overflow-hidden">
-                                {/* Student Submission View */}
-                                <Card className="border-none shadow-xl rounded-3xl flex flex-col overflow-hidden">
-                                    <CardHeader className="bg-slate-50/50 border-b border-slate-100 py-4 flex flex-row items-center justify-between">
-                                        <CardTitle className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
-                                            <FileText className="h-4 w-4 text-indigo-600" />
-                                            Student Submission
+                            <div className="space-y-6">
+                                {/* Student Info */}
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle className="text-sm font-medium">
+                                            Submission Details
                                         </CardTitle>
-                                        {selectedSubmission.file_path && (
-                                            <Button variant="outline" size="sm" className="h-8 rounded-lg text-[10px] font-black uppercase tracking-widest border-slate-200" asChild>
-                                                <a href={`/storage/${selectedSubmission.file_path}`} download>
-                                                    <Download className="h-3 w-3 mr-1.5" />
-                                                    Download File
-                                                </a>
-                                            </Button>
-                                        )}
                                     </CardHeader>
-                                    <CardContent className="p-6 flex-1 overflow-y-auto space-y-6">
-                                        {selectedSubmission.submission_text ? (
-                                            <div className="prose prose-slate max-w-none">
-                                                <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 text-slate-700 font-medium leading-relaxed whitespace-pre-wrap">
-                                                    {selectedSubmission.submission_text}
-                                                </div>
+                                    <CardContent>
+                                        <div className="flex items-center gap-4">
+                                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
+                                                <User className="h-6 w-6" />
                                             </div>
-                                        ) : (
-                                            <div className="flex flex-col items-center justify-center py-20 text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                                                <FileText className="h-12 w-12 mb-4 opacity-20" />
-                                                <p className="font-bold">No text submission provided</p>
-                                                <p className="text-xs uppercase tracking-widest mt-1">Check for attachments above</p>
-                                            </div>
-                                        )}
+                                            <div>
+                                                <h3 className="font-bold text-gray-900">
+                                                    {selectedSubmission.student_name}
+                                                </h3>
+                                                <p className="text-sm text-gray-500">
+                                                    Submitted on {selectedSubmission.submitted_at}
+                                                </p>
+                                                {selectedSubmission.score !== null && selectedSubmission.status === 'Graded' && (
+                                                    <div className="mt-1 flex items-center gap-2">
+                                                        <Award className="h-4 w-4 text-amber-500" />
+                                                        <p className="text-sm font-semibold text-gray-700">
+                                                            Score: {selectedSubmission.score} / {assignment.max_score}
+                                                            {selectedSubmission.percentage !== undefined && (
+                                                                <span className="ml-2 text-xs text-gray-500">({selectedSubmission.percentage}%)</span>
+                                                            )}
+                                                        </p>
+                                                    </div>
+                                                )}
 
-                                        <div className="space-y-4">
-                                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Assignment Instructions</h4>
-                                            <div className="p-4 bg-indigo-50/30 rounded-2xl border border-indigo-100/50 text-indigo-900/70 text-xs font-medium italic">
-                                                {lesson.assignment_data.instructions}
+                                                {selectedSubmission.status === 'Rejected' && (
+                                                    <div className="mt-1">
+                                                        <Badge className="bg-red-100 text-red-800 border-red-200 text-xs">
+                                                            <XCircle className="h-3 w-3 mr-1" />
+                                                            Rejected - Student can resubmit
+                                                        </Badge>
+                                                    </div>
+                                                )}
+                                                {selectedSubmission.resubmission_count && selectedSubmission.resubmission_count > 0 && (
+                                                    <div className="mt-1 space-y-1">
+                                                        <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200 text-xs">
+                                                            Resubmitted {selectedSubmission.resubmission_count} time{selectedSubmission.resubmission_count > 1 ? 's' : ''}
+                                                        </Badge>
+                                                        {selectedSubmission.last_reopened_at && (
+                                                            <div className="text-xs text-gray-500">
+                                                                Last reopened: {selectedSubmission.last_reopened_at}
+                                                            </div>
+                                                        )}
+                                                        {selectedSubmission.resubmission_count > 0 && (
+                                                            <div className="text-xs text-orange-600 font-medium">
+                                                                ⚠️ Previous grade was cleared when student reopened this assignment
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     </CardContent>
                                 </Card>
 
-                                {/* Grading & Feedback View */}
-                                <Card className="border-none shadow-xl rounded-3xl flex flex-col overflow-hidden bg-white">
-                                    <CardHeader className="bg-indigo-600 text-white py-4">
-                                        <CardTitle className="text-xs font-black uppercase tracking-widest flex items-center gap-2">
-                                            <Award className="h-4 w-4" />
-                                            Grade & Feedback
+                                {/* Assignment Instructions */}
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle className="text-sm font-medium">
+                                            Assignment Instructions
                                         </CardTitle>
                                     </CardHeader>
-                                    <CardContent className="p-6 flex-1 overflow-y-auto">
-                                        <form onSubmit={submitGrade} className="space-y-6 h-full flex flex-col">
-                                            <div className="space-y-4">
-                                                <div className="grid gap-2">
-                                                    <Label htmlFor="score" className="text-xs font-black text-slate-500 uppercase tracking-widest">Score (Out of {lesson.assignment_data.max_score})</Label>
-                                                    <div className="flex items-center gap-3">
-                                                        <Input
-                                                            id="score"
-                                                            type="number"
-                                                            step="0.1"
-                                                            max={lesson.assignment_data.max_score}
-                                                            value={data.score}
-                                                            onChange={(e) => setData('score', e.target.value)}
-                                                            className="h-12 rounded-xl border-slate-200 font-black text-lg focus:ring-indigo-600"
-                                                            placeholder="0.0"
-                                                            required
-                                                        />
-                                                        <span className="text-2xl font-black text-slate-300">/</span>
-                                                        <div className="h-12 w-20 rounded-xl bg-slate-100 flex items-center justify-center font-black text-slate-500 border border-slate-200">
-                                                            {lesson.assignment_data.max_score}
-                                                        </div>
+                                    <CardContent>
+                                        <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700 whitespace-pre-wrap">
+                                            {assignment?.instructions || 'No instructions provided'}
+                                        </div>
+                                    </CardContent>
+                                </Card>
+
+                                {/* Submission Content */}
+                                            {(selectedSubmission.submission_text || (selectedSubmission.files && selectedSubmission.files.length > 0) || selectedSubmission.file_path) && (
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle className="text-sm font-medium">
+                                                Student Submission
+                                            </CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            {selectedSubmission.submission_text && (
+                                                <div className="mb-4">
+                                                    <Label className="text-xs font-medium text-gray-500">Text Submission:</Label>
+                                                    <div className="mt-1 rounded-lg border border-gray-200 bg-white p-4 text-sm whitespace-pre-wrap">
+                                                        {selectedSubmission.submission_text}
                                                     </div>
-                                                    {errors.score && <p className="text-xs font-bold text-rose-500">{errors.score}</p>}
                                                 </div>
+                                            )}
+                                            {((selectedSubmission.files && selectedSubmission.files.length > 0) || selectedSubmission.file_path) && (
+                                                <div>
+                                                    <Label className="text-xs font-medium text-gray-500">File Submission{(selectedSubmission.files && selectedSubmission.files.length > 1) ? 's' : ''}:</Label>
+                                                    <div className="mt-2 space-y-2">
+                                                        {selectedSubmission.files && selectedSubmission.files.map((file, index) => (
+                                                            <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border">
+                                                                <FileText className="h-5 w-5 text-blue-500 flex-shrink-0" />
+                                                                <div className="flex-1 min-w-0">
+                                                                    <p className="text-sm font-medium text-gray-900 truncate">
+                                                                        {file.original_name}
+                                                                    </p>
+                                                                </div>
+                                                                <div className="flex gap-2">
+                                                                    <a
+                                                                        href={file.url}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        className="inline-flex items-center gap-1 px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors"
+                                                                    >
+                                                                        <Download className="h-3 w-3" />
+                                                                        View
+                                                                    </a>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+                                )}
 
-                                                <div className="grid gap-2 flex-1">
-                                                    <Label htmlFor="feedback" className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                                                        <MessageSquare className="h-3.5 w-3.5 text-indigo-500" />
-                                                        Instructor Feedback
-                                                    </Label>
-                                                    <Textarea
-                                                        id="feedback"
-                                                        value={data.feedback}
-                                                        onChange={(e) => setData('feedback', e.target.value)}
-                                                        className="min-h-[200px] rounded-2xl border-slate-200 focus:ring-indigo-600 p-4 font-medium leading-relaxed"
-                                                        placeholder="Provide constructive feedback to the student..."
-                                                    />
-                                                    {errors.feedback && <p className="text-xs font-bold text-rose-500">{errors.feedback}</p>}
-                                                </div>
+                                {/* Grading Section */}
+                                <Card>
+                                    <CardHeader>
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <Star className="h-4 w-4" />
+                                                <CardTitle className="text-sm font-medium">
+                                                    Grade Submission
+                                                </CardTitle>
                                             </div>
-
-                                            <div className="mt-auto pt-6 border-t border-slate-100">
-                                                <Button 
-                                                    type="submit" 
+                                            <div className="flex items-center gap-3">
+                                                {selectedSubmission.status !== 'Graded' && (
+                                                    <Button
+                                                        variant="outline"
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setRejectData({
+                                                                feedback: selectedSubmission.status === 'Rejected' ? (selectedSubmission.feedback || '') : '',
+                                                            });
+                                                            setShowRejectModal(true);
+                                                        }}
+                                                        disabled={processing || rejectProcessing || selectedSubmission.status === 'Rejected'}
+                                                        className="ml-2"
+                                                        title="Sends the submission back to the student with feedback for improvements. The student can then resubmit."
+                                                    >
+                                                        <XCircle className="mr-2 h-4 w-4" />
+                                                        {selectedSubmission.status === 'Rejected' ? 'Re-Request Revision' : 'Request Revision'}
+                                                    </Button>
+                                                )}
+                                                <Button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setData({
+                                                            score: selectedSubmission.score?.toString() || '',
+                                                            feedback: selectedSubmission.status === 'Graded' ? (selectedSubmission.feedback || '') : '',
+                                                        });
+                                                        setShowGradeModal(true);
+                                                    }}
                                                     disabled={processing}
-                                                    className="w-full h-14 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-2xl shadow-xl shadow-indigo-100 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                                                    className="ml-2"
                                                 >
-                                                    {processing ? (
-                                                        <Clock className="h-5 w-5 mr-2 animate-spin" />
-                                                    ) : (
-                                                        <CheckCircle className="h-5 w-5 mr-2" />
-                                                    )}
+                                                    <Send className="h-4 w-4" />
                                                     {selectedSubmission.status === 'Graded' ? 'Update Grade' : 'Submit Grade'}
                                                 </Button>
-                                                {selectedSubmission.status === 'Graded' && (
-                                                    <p className="text-[10px] font-black text-emerald-600 text-center mt-3 uppercase tracking-widest">
-                                                        ✓ Last graded on {new Date().toLocaleDateString()}
-                                                    </p>
-                                                )}
                                             </div>
-                                        </form>
-                                    </CardContent>
+                                        </div>
+                                    </CardHeader>
+
                                 </Card>
                             </div>
                         ) : (
-                            <div className="flex flex-col items-center justify-center h-full text-slate-400 bg-white rounded-3xl shadow-xl border border-dashed border-slate-200">
-                                <User className="h-16 w-16 mb-4 opacity-10" />
-                                <h3 className="text-xl font-black text-slate-300 uppercase tracking-widest">Select a student to grade</h3>
+                            <div className="flex h-[400px] flex-col items-center justify-center rounded-lg border border-gray-200 bg-gray-50">
+                                <Users className="mb-4 h-12 w-12 text-gray-400" />
+                                <h3 className="text-lg font-medium text-gray-900">No submission selected</h3>
+                                <p className="text-gray-500">Select a student from the left sidebar to view their submission.</p>
                             </div>
                         )}
                     </div>
                 </div>
             </div>
+
+            {showGradeModal && selectedSubmission && (
+                <ConfirmationModal
+                    isOpen={showGradeModal}
+                    onClose={() => {
+                        setShowGradeModal(false);
+                        reset();
+                    }}
+                    onConfirm={handleGradeSubmission}
+                    title={selectedSubmission.status === 'Graded' ? 'Update Grade' : 'Grade Submission'}
+                    description="Enter the score and feedback for this submission. The student will be able to see this feedback."
+                    confirmText={selectedSubmission.status === 'Graded' ? 'Update Grade' : 'Submit Grade'}
+                    isLoading={processing}
+                    type="success"
+                    confirmButtonDisabled={!data.score || Number(data.score) < 0 || Number(data.score) > assignment.max_score}
+                >
+                    <div className="mt-4 space-y-4">
+                        <div>
+                            <Label htmlFor="score">Score (Max: {assignment.max_score})</Label>
+                            <Input
+                                id="score"
+                                type="number"
+                                value={data.score}
+                                onChange={(e) => setData('score', e.target.value)}
+                                className={errors.score ? 'border-red-500' : ''}
+                                min="0"
+                                max={assignment.max_score.toString()}
+                            />
+                            {errors.score && (
+                                <p className="text-sm text-red-500 mt-1">{errors.score}</p>
+                            )}
+                        </div>
+                        <div>
+                            <Label htmlFor="feedback">Feedback</Label>
+                            <Textarea
+                                id="feedback"
+                                value={data.feedback}
+                                onChange={(e) => setData('feedback', e.target.value)}
+                                placeholder="Provide feedback to the student (optional)"
+                                rows={5}
+                                className={errors.feedback ? 'border-red-500' : ''}
+                            />
+                            {errors.feedback && (
+                                <p className="text-sm text-red-500 mt-1">{errors.feedback}</p>
+                            )}
+                        </div>
+                    </div>
+                </ConfirmationModal>
+            )}
+            {showRejectModal && (
+                 <ConfirmationModal
+                     isOpen={showRejectModal}
+                     onClose={() => {
+                         setShowRejectModal(false);
+                         resetReject();
+                     }}
+                     onConfirm={handleRejectSubmission}
+                     title="Reject Submission"
+                     description="Student will be able to resubmit after rejection"
+                     confirmText="Reject Submission"
+                     isDestructive
+                     isLoading={rejectProcessing}
+                     confirmButtonDisabled={!rejectData.feedback.trim()}
+                 >
+                    {/* Form content for feedback */}
+                    <form onSubmit={handleRejectSubmission} className="mt-4 space-y-4">
+                        <div>
+                            <Label htmlFor="reject-feedback" className="sr-only">Feedback</Label>
+                            <Textarea
+                                id="reject-feedback"
+                                value={rejectData.feedback}
+                                onChange={(e) => setRejectData('feedback', e.target.value)}
+                                placeholder="Provide feedback to the student (required)"
+                                rows={4}
+                                className={rejectErrors.feedback ? 'border-red-500' : ''}
+                            />
+                            {rejectErrors.feedback && (
+                                <p className="text-sm text-red-500 mt-1">{rejectErrors.feedback}</p>
+                            )}
+                        </div>
+                    </form>
+                 </ConfirmationModal>
+             )}
         </AppLayout>
     );
 }

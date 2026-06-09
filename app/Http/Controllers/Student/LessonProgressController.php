@@ -30,6 +30,13 @@ class LessonProgressController extends Controller
             ], 403);
         }
 
+        if ($enrollment->isExpired()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Your access to this course has expired.',
+            ], 403);
+        }
+
         if (!$lesson->is_published) {
             return response()->json([
                 'success' => false,
@@ -75,6 +82,13 @@ class LessonProgressController extends Controller
             ], 403);
         }
 
+        if ($enrollment->isExpired()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Your access to this course has expired.',
+            ], 403);
+        }
+        
         if (!$lesson->is_published) {
             return response()->json([
                 'success' => false,

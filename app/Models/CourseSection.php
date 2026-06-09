@@ -23,4 +23,41 @@ class CourseSection extends Model
     {
         return $this->hasMany(Lesson::class, 'section_id')->orderBy('order');
     }
+
+    public function moveUp(): bool
+    {
+        $previousSection = static::where('course_id', $this->course_id)
+            ->where('order', '<', $this->order)
+            ->orderBy('order', 'desc')
+            ->first();
+
+        if (!$previousSection) {
+            return false;
+        }
+
+        $this->swapOrder($previousSection);
+        return true;
+    }
+
+    public function moveDown(): bool
+    {
+        $nextSection = static::where('course_id', $this->course_id)
+            ->where('order', '>', $this->order)
+            ->orderBy('order', 'asc')
+            ->first();
+
+        if (!$nextSection) {
+            return false;
+        }
+
+        $this->swapOrder($nextSection);
+        return true;
+    }
+
+    private function swapOrder(CourseSection $otherSection): void
+    {
+        $tempOrder = $this->order;
+        $this->update(['order' => $otherSection->order]);
+        $otherSection->update(['order' => $tempOrder]);
+    }
 }

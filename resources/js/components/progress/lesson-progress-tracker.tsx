@@ -17,37 +17,39 @@ export default function LessonProgressTracker({
     isCompleted,
     completedAt,
     timeSpent = 0,
-    onProgressUpdate
+    onProgressUpdate,
 }: LessonProgressProps) {
     const [loading, setLoading] = useState(false);
     const [completed, setCompleted] = useState(isCompleted);
     const progressMessages = useActionMessages('Lesson progress');
 
     const getCsrfToken = () => {
-        const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        const token = document
+            .querySelector('meta[name="csrf-token"]')
+            ?.getAttribute('content');
 
         return token || '';
     };
 
     const toggleCompletion = async () => {
         setLoading(true);
-        
+
         try {
-            const endpoint = completed 
+            const endpoint = completed
                 ? `/student/lessons/${lessonId}/incomplete`
                 : `/student/lessons/${lessonId}/complete`;
-                
+
             const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: {
                     'X-CSRF-TOKEN': getCsrfToken(),
-                    'Accept': 'application/json',
+                    Accept: 'application/json',
                     'Content-Type': 'application/json',
                 },
             });
 
             const data = await response.json();
-            
+
             if (data.success) {
                 setCompleted(!completed);
                 onProgressUpdate?.(lessonId, !completed);
@@ -76,16 +78,16 @@ export default function LessonProgressTracker({
     };
 
     return (
-        <div className="flex items-center justify-between p-3 bg-white border rounded-lg hover:bg-gray-50">
+        <div className="flex items-center justify-between rounded-lg border bg-white p-3 hover:bg-gray-50">
             <div className="flex items-center space-x-3">
                 <button
                     onClick={toggleCompletion}
                     disabled={loading}
                     className={`flex-shrink-0 transition-colors ${
-                        completed 
-                            ? 'text-green-600 hover:text-green-700' 
+                        completed
+                            ? 'text-green-600 hover:text-green-700'
                             : 'text-gray-400 hover:text-green-600'
-                    } ${loading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                    } ${loading ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
                 >
                     {completed ? (
                         <CheckCircle className="h-6 w-6" />
@@ -93,25 +95,30 @@ export default function LessonProgressTracker({
                         <Circle className="h-6 w-6" />
                     )}
                 </button>
-                
+
                 <div className="flex-1">
-                    <h4 className={`font-medium ${
-                        completed ? 'text-gray-900 line-through' : 'text-gray-900'
-                    }`}>
+                    <h4
+                        className={`font-medium ${
+                            completed
+                                ? 'text-gray-900 line-through'
+                                : 'text-gray-900'
+                        }`}
+                    >
                         {lessonTitle}
                     </h4>
-                    
+
                     {completed && completedAt && (
                         <p className="text-sm text-green-600">
-                            Completed {new Date(completedAt).toLocaleDateString()}
+                            Completed{' '}
+                            {new Date(completedAt).toLocaleDateString()}
                         </p>
                     )}
                 </div>
             </div>
-            
+
             {timeSpent > 0 && (
                 <div className="flex items-center text-sm text-gray-500">
-                    <Clock className="h-4 w-4 mr-1" />
+                    <Clock className="mr-1 h-4 w-4" />
                     {formatTimeSpent(timeSpent)}
                 </div>
             )}

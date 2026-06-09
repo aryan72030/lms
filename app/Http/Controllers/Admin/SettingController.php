@@ -127,31 +127,17 @@ class SettingController extends Controller
      */
     public function updateGeneralSettings(Request $request)
     {
-        try {
-            $validated = $request->validate([
-                'site_name' => 'required|string|max:255',
-                'site_description' => 'nullable|string|max:500',
-                'timezone' => ['required', 'string', Rule::in(DateTimeZone::listIdentifiers(DateTimeZone::ALL))],
-                'site_logo' => 'nullable|file|image|mimes:jpg,jpeg,png,svg,webp|max:2048',
-                'site_favicon' => 'nullable|file|max:1024',
-                'pagination_limit' => 'required|integer|min:5|max:200',
-                'footer_text' => 'nullable|string|max:255',
-            ]);
-        } catch (ValidationException $e) {
-            if ($request->expectsJson()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Validation failed.',
-                    'errors' => $e->errors(),
-                ], 422);
-            }
-
-            throw $e;
-        }
+        $validated = $request->validate([
+            'site_name' => 'required|string|max:255',
+            'timezone' => ['required', 'string', Rule::in(DateTimeZone::listIdentifiers(DateTimeZone::ALL))],
+            'site_logo' => 'nullable|file|mimes:jpg,jpeg,png,svg,webp|max:5120',
+            'site_favicon' => 'nullable|file|mimes:jpg,jpeg,png,svg,webp,ico|max:5120',
+            'pagination_limit' => 'required|integer|min:5|max:200',
+            'footer_text' => 'nullable|string|max:255',
+        ]);
 
         try {
             Setting::set('site_name', $validated['site_name'], Setting::CATEGORY_GENERAL);
-            Setting::set('site_description', $validated['site_description'] ?? null, Setting::CATEGORY_GENERAL);
             Setting::set('timezone', $validated['timezone'], Setting::CATEGORY_GENERAL);
             Setting::set(
                 'site_logo',
@@ -192,15 +178,16 @@ class SettingController extends Controller
         $uploadedFile = $request->file($field);
         $path = $uploadedFile->store($directory, 'public');
 
-        if ($currentValue && (str_starts_with($currentValue, '/storage/') || str_starts_with($currentValue, '/files/'))) {
-            $oldPath = ltrim(str_replace(['/storage/', '/files/'], '', $currentValue), '/');
-
+        // Delete old file if exists
+        if ($currentValue) {
+            $oldPath = ltrim(str_replace(['/storage/', '/files/', url('/storage/'), url('/files/')], '', $currentValue), '/');
             if (Storage::disk('public')->exists($oldPath)) {
                 Storage::disk('public')->delete($oldPath);
             }
         }
 
-        return Storage::url($path);
+        // Use /files/ route which works on Windows XAMPP without symlink
+        return '/files/' . $path;
     }
 
     /**
@@ -210,15 +197,12 @@ class SettingController extends Controller
     {
         $request->validate([
             // Basic Course Settings
-            'default_course_duration' => 'nullable|integer|min:1',
             'require_course_description' => 'boolean',
             'require_course_thumbnail' => 'boolean',
-            'min_lessons_per_course' => 'nullable|integer|min:1|max:10',
             
             // File Upload Settings
             'max_file_upload_size' => 'nullable|integer|min:1',
             'allowed_file_types' => 'nullable|string',
-            'max_files_per_lesson' => 'nullable|integer|min:1|max:10',
             
             // Approval Settings
             'auto_approve_courses' => 'boolean',
@@ -227,7 +211,6 @@ class SettingController extends Controller
             // Quiz & Completion Settings
             'require_final_quiz' => 'boolean',
             'min_quiz_passing_score' => 'nullable|integer|min:1|max:100',
-            'max_quiz_attempts' => 'nullable|integer|min:1|max:10',
             
             // Certificate Settings
             'enable_certificates' => 'boolean',
@@ -240,15 +223,12 @@ class SettingController extends Controller
 
         try {
             // Basic Course Settings
-            Setting::set('default_course_duration', $request->default_course_duration ?? 40, Setting::CATEGORY_COURSE, Setting::TYPE_NUMBER);
             Setting::set('require_course_description', $request->require_course_description ?? true, Setting::CATEGORY_COURSE, Setting::TYPE_BOOLEAN);
             Setting::set('require_course_thumbnail', $request->require_course_thumbnail ?? true, Setting::CATEGORY_COURSE, Setting::TYPE_BOOLEAN);
-            Setting::set('min_lessons_per_course', $request->min_lessons_per_course ?? 3, Setting::CATEGORY_COURSE, Setting::TYPE_NUMBER);
             
             // File Upload Settings
             Setting::set('max_file_upload_size', $request->max_file_upload_size ?? 10, Setting::CATEGORY_COURSE, Setting::TYPE_NUMBER);
             Setting::set('allowed_file_types', $request->allowed_file_types ?? 'jpg,jpeg,png,pdf,doc,docx,mp4,mp3', Setting::CATEGORY_COURSE);
-            Setting::set('max_files_per_lesson', $request->max_files_per_lesson ?? 5, Setting::CATEGORY_COURSE, Setting::TYPE_NUMBER);
             
             // Approval Settings
             Setting::set('auto_approve_courses', $request->auto_approve_courses ?? false, Setting::CATEGORY_COURSE, Setting::TYPE_BOOLEAN);
@@ -257,7 +237,6 @@ class SettingController extends Controller
             // Quiz & Completion Settings
             Setting::set('require_final_quiz', $request->require_final_quiz ?? true, Setting::CATEGORY_COURSE, Setting::TYPE_BOOLEAN);
             Setting::set('min_quiz_passing_score', $request->min_quiz_passing_score ?? 70, Setting::CATEGORY_COURSE, Setting::TYPE_NUMBER);
-            Setting::set('max_quiz_attempts', $request->max_quiz_attempts ?? 3, Setting::CATEGORY_COURSE, Setting::TYPE_NUMBER);
             
             // Certificate Settings
             Setting::set('enable_certificates', $request->enable_certificates ?? true, Setting::CATEGORY_COURSE, Setting::TYPE_BOOLEAN);
@@ -304,6 +283,7 @@ class SettingController extends Controller
             'email_user_registration' => 'boolean',
             'email_course_enrollment' => 'boolean',
             'email_payment_confirmation' => 'boolean',
+            'email_payment_refund' => 'boolean',
             'email_course_completion' => 'boolean',
             'email_password_reset' => 'boolean',
             'email_instructor_notifications' => 'boolean',
@@ -333,6 +313,7 @@ class SettingController extends Controller
             Setting::set('email_user_registration', $request->email_user_registration ?? false, Setting::CATEGORY_NOTIFICATION, Setting::TYPE_BOOLEAN);
             Setting::set('email_course_enrollment', $request->email_course_enrollment ?? false, Setting::CATEGORY_NOTIFICATION, Setting::TYPE_BOOLEAN);
             Setting::set('email_payment_confirmation', $request->email_payment_confirmation ?? false, Setting::CATEGORY_NOTIFICATION, Setting::TYPE_BOOLEAN);
+            Setting::set('email_payment_refund', $request->email_payment_refund ?? false, Setting::CATEGORY_NOTIFICATION, Setting::TYPE_BOOLEAN);
             Setting::set('email_course_completion', $request->email_course_completion ?? false, Setting::CATEGORY_NOTIFICATION, Setting::TYPE_BOOLEAN);
             Setting::set('email_password_reset', $request->email_password_reset ?? false, Setting::CATEGORY_NOTIFICATION, Setting::TYPE_BOOLEAN);
             Setting::set('email_instructor_notifications', $request->email_instructor_notifications ?? false, Setting::CATEGORY_NOTIFICATION, Setting::TYPE_BOOLEAN);

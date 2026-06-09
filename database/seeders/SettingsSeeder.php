@@ -21,10 +21,11 @@ class SettingsSeeder extends Seeder
 
 
             // Course Settings
-            ['key' => 'default_course_duration', 'value' => '40', 'category' => 'course', 'type' => 'number', 'description' => 'Default course duration in hours', 'is_encrypted' => false],
             ['key' => 'max_file_upload_size', 'value' => '10', 'category' => 'course', 'type' => 'number', 'description' => 'Maximum file upload size in MB', 'is_encrypted' => false],
             ['key' => 'allowed_file_types', 'value' => 'jpg,jpeg,png,pdf,doc,docx,mp4,mp3', 'category' => 'course', 'type' => 'text', 'description' => 'Allowed file types for uploads', 'is_encrypted' => false],
             ['key' => 'auto_approve_courses', 'value' => '0', 'category' => 'course', 'type' => 'boolean', 'description' => 'Auto-approve new courses', 'is_encrypted' => false],
+            ['key' => 'min_quiz_passing_score', 'value' => '70', 'category' => 'course', 'type' => 'number', 'description' => 'Minimum quiz passing score percentage', 'is_encrypted' => false],
+            ['key' => 'enable_certificates', 'value' => '1', 'category' => 'course', 'type' => 'boolean', 'description' => 'Enable course completion certificates', 'is_encrypted' => false],
 
             // Payment Settings
             ['key' => 'paypal_enabled', 'value' => '1', 'category' => 'payment', 'type' => 'boolean', 'description' => 'Enable PayPal payments', 'is_encrypted' => false],
@@ -45,6 +46,7 @@ class SettingsSeeder extends Seeder
             ['key' => 'email_user_registration', 'value' => '1', 'category' => 'notification', 'type' => 'boolean', 'description' => 'Send email on user registration', 'is_encrypted' => false],
             ['key' => 'email_course_enrollment', 'value' => '1', 'category' => 'notification', 'type' => 'boolean', 'description' => 'Send email on course enrollment', 'is_encrypted' => false],
             ['key' => 'email_payment_confirmation', 'value' => '1', 'category' => 'notification', 'type' => 'boolean', 'description' => 'Send email on payment confirmation', 'is_encrypted' => false],
+            ['key' => 'email_payment_refund', 'value' => '1', 'category' => 'notification', 'type' => 'boolean', 'description' => 'Send email on payment refund', 'is_encrypted' => false],
             ['key' => 'email_course_completion', 'value' => '1', 'category' => 'notification', 'type' => 'boolean', 'description' => 'Send email on course completion', 'is_encrypted' => false],
             ['key' => 'email_password_reset', 'value' => '1', 'category' => 'notification', 'type' => 'boolean', 'description' => 'Send email on password reset', 'is_encrypted' => false],
             ['key' => 'email_instructor_notifications', 'value' => '1', 'category' => 'notification', 'type' => 'boolean', 'description' => 'Send email notifications to instructors', 'is_encrypted' => false],

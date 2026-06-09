@@ -1,14 +1,18 @@
-import { Head, Link } from '@inertiajs/react';
-import React from 'react';
-import AdminLessonForm from '@/components/admin/admin-lesson-form';
+import { Head, router } from '@inertiajs/react';
+import React, { useState } from 'react';
+import { Link } from '@inertiajs/react';
+import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import LessonForm from '@/components/lessons/LessonForm';
 import AppLayout from '@/layouts/app-layout';
+import { useActionMessages } from '@/hooks/use-action-messages';
 
 interface Course {
     id: number;
     title: string;
-    status_label: string;
-    instructor_name: string;
+    status: string;
+    status_label?: string;
+    instructor_name?: string;
 }
 
 interface Lesson {
@@ -31,37 +35,56 @@ interface Props {
     lesson: Lesson;
     courses: Course[];
     lessonTypes: string[];
+    quizzes: Array<{ id: number; title: string }>;
 }
 
-export default function AdminLessonEditStandalone({ lesson, courses, lessonTypes }: Props) {
-    return (
-        <AppLayout breadcrumbs={[
-            { title: 'Dashboard', href: '/admin/dashboard' },
-            { title: 'Lesson Management', href: '/admin/lessons' },
-            { title: `Edit ${lesson.title}`, href: `/admin/lessons/${lesson.id}/edit` }
-        ]}>
-            <Head title={`Edit Lesson - ${lesson.title}`} />
-            
-            <div className="space-y-6">
-                {/* Header */}
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h1 className="text-3xl font-bold text-gray-900">Edit Lesson</h1>
-                        <p className="text-gray-600">
-                            Updating standalone lesson "{lesson.title}"
-                        </p>
-                    </div>
-                </div>
+export default function AdminLessonEditStandalone({
+    lesson,
+    courses,
+    lessonTypes,
+    quizzes,
+}: Props) {
+    const lessonMessages = useActionMessages('Lesson');
+    const [processing, setProcessing] = useState(false);
+    const [errors, setErrors] = useState({});
 
-                <AdminLessonForm 
-                    mode="edit"
-                    lesson={lesson}
-                    courses={courses}
-                    lessonTypes={lessonTypes}
-                    action={`/admin/lessons/${lesson.id}`}
-                    cancelUrl="/admin/lessons"
-                />
-            </div>
+    const handleSubmit = (data: any) => {
+        setProcessing(true);
+        router.put(`/admin/lessons/${lesson.id}`, data, {
+            onSuccess: () => {},
+            onError: (err) => {
+                setErrors(err);
+                lessonMessages.error('update');
+            },
+            onFinish: () => setProcessing(false),
+        });
+    };
+
+    return (
+        <AppLayout
+            breadcrumbs={[
+                { title: 'Dashboard', href: '/admin/dashboard' },
+                { title: 'Lesson Management', href: '/admin/lessons' },
+                {
+                    title: `Edit ${lesson.title}`,
+                    href: `/admin/lessons/${lesson.id}/edit`,
+                },
+            ]}
+        >
+            <Head title={`Edit Lesson - ${lesson.title}`} />
+
+
+
+            <LessonForm
+                lesson={lesson as any}
+                courses={courses}
+                lessonTypes={lessonTypes}
+                quizzes={quizzes}
+                onSubmit={handleSubmit}
+                processing={processing}
+                errors={errors}
+                cancelUrl="/admin/lessons"
+            />
         </AppLayout>
     );
 }

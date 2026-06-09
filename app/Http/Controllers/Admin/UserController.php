@@ -31,7 +31,7 @@ class UserController extends Controller
     {
         $this->ensureAdmin($request);
 
-        $query = User::query();
+        $query = User::query()->where('role', '!=', User::ROLE_ADMIN);
 
         // Search functionality
         if ($request->filled('search')) {
@@ -72,7 +72,6 @@ class UserController extends Controller
             'users' => $users,
             'filters' => $request->only(['search', 'role', 'status']),
             'roles' => [
-                User::ROLE_ADMIN,
                 User::ROLE_INSTRUCTOR,
                 User::ROLE_STUDENT,
             ],
@@ -110,7 +109,11 @@ class UserController extends Controller
                 'name' => ['required', 'string', 'max:255'],
                 'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
                 'password' => ['required', 'string', 'min:8', 'confirmed'],
-                'role' => ['required', 'string', Rule::in([User::ROLE_ADMIN, User::ROLE_INSTRUCTOR, User::ROLE_STUDENT])],
+                'role' => [
+                    'required',
+                    'string',
+                    Rule::in([User::ROLE_INSTRUCTOR, User::ROLE_STUDENT]),
+                ],
                 'phone' => ['nullable', 'string', 'max:20'],
                 'date_of_birth' => ['nullable', 'date', 'before:today'],
                 'status' => ['required', 'string', Rule::in(['Active', 'Inactive'])],
@@ -146,18 +149,20 @@ class UserController extends Controller
                 $registrationEnabled = (bool) ($emailSettings['types']['user_registration'] ?? false);
 
                 if ($emailEnabled && $registrationEnabled) {
-                    try {
-                        Mail::to($user->email)->send(new UserCreated($user, $validated['password']));
-                } catch (\Throwable $mailException) {
-                    // Log the mail error but don't fail the user creation
-                    Log::error('Failed to send welcome email to user: ' . $user->email, [
-                        'error' => $mailException->getMessage(),
-                        'user_id' => $user->id,
-                    ]);
+                    // Check SMTP is configured before attempting
+                    $smtpHost = $emailSettings['smtp_host'] ?? null;
+                    if ($smtpHost) {
+                        try {
+                            Mail::to($user->email)->send(new UserCreated($user, $validated['password']));
+                        } catch (\Throwable $mailException) {
+                            Log::error('Failed to send welcome email to user: ' . $user->email, [
+                                'error' => $mailException->getMessage(),
+                                'user_id' => $user->id,
+                            ]);
+                        }
+                    }
                 }
-            }
             } catch (\Throwable $settingsException) {
-                // If settings lookup fails, still treat creation as success.
                 Log::error('Failed to load email settings during user creation', [
                     'error' => $settingsException->getMessage(),
                     'user_id' => $user->id,

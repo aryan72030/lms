@@ -49,6 +49,15 @@ class Quiz extends Model
         static::saved(function ($quiz) {
             $quiz->updateTotalMarks();
         });
+
+        // Cleanup associated questions when quiz is deleted
+        static::deleting(function ($quiz) {
+            if ($quiz->isForceDeleting()) {
+                $quiz->questions()->forceDelete();
+            } else {
+                $quiz->questions()->delete();
+            }
+        });
     }
 
     // Relationships
@@ -64,7 +73,7 @@ class Quiz extends Model
 
     public function attempts(): HasMany
     {
-        return $this->hasMany(QuizAttempt::class, 'lesson_id');
+        return $this->hasMany(QuizAttempt::class, 'quiz_id');
     }
 
     public function activeQuestions(): HasMany
@@ -97,12 +106,17 @@ class Quiz extends Model
             return false;
         }
 
-        $attemptCount = $this->attempts()
-            ->where('student_id', $studentId)
-            ->where('status', 'completed')
-            ->count();
+        // Check if student has already passed
+        if ($this->hasStudentPassed($studentId)) {
+            return false;
+        }
 
-        return $attemptCount < $this->max_attempts;
+        $maxAttempts = $this->max_attempts > 0 ? $this->max_attempts : 1;
+        if ($this->getStudentAttemptCount($studentId) >= $maxAttempts) {
+            return false;
+        }
+
+        return true;
     }
 
     public function getStudentAttemptCount(int $studentId): int

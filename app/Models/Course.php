@@ -34,6 +34,7 @@ class Course extends Model
         'thumbnail',
         'language',
         'price',
+        'access_duration',
         'duration_hours',
         'difficulty_level',
         'status',
@@ -48,6 +49,7 @@ class Course extends Model
 
     protected $casts = [
         'price' => 'decimal:2',
+        'objectives' => 'array',
         'requirements' => 'array',
         'target_audience' => 'array',
         'submitted_at' => 'datetime',
@@ -130,6 +132,16 @@ class Course extends Model
     public function reviewsCount()
     {
         return $this->reviews()->count();
+    }
+
+    public function assignments(): HasMany
+    {
+        return $this->hasMany(CourseAssignment::class)->orderBy('order');
+    }
+
+    public function publishedAssignments(): HasMany
+    {
+        return $this->hasMany(CourseAssignment::class)->where('is_published', true)->orderBy('order');
     }
 
     public function quizzes(): HasMany
@@ -328,8 +340,7 @@ class Course extends Model
     // Validation methods
     public function hasMinimumContent(): bool
     {
-        $minLessons = Setting::get('min_lessons_per_course', 1);
-        return $this->lessons()->count() >= $minLessons;
+        return $this->lessons()->count() >= 1;
     }
 
     public function hasPublishedLessons(): bool

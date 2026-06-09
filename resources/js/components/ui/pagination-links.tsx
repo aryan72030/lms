@@ -18,7 +18,7 @@ export function PaginationLinks({ links = [], onPageChange }: PaginationLinksPro
     }
 
     return (
-        <div className="flex justify-center">
+        <div className="flex justify-end mt-4">
             <div className="flex flex-wrap gap-2">
                 {links.map((link, index) => (
                     <Button

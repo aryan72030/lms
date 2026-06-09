@@ -14,11 +14,9 @@ export default function AppHeaderLayout({
     return (
         <AppShell variant="header">
             <AppHeader breadcrumbs={breadcrumbs} />
-            <AppContent variant="header" className="flex flex-col min-h-screen">
-                <div className="px-4 py-6 flex-1">
-                    {children}
-                </div>
-                <footer className="px-4 py-4 text-xs text-muted-foreground border-t border-gray-50 max-w-7xl mx-auto w-full">
+            <AppContent variant="header" className="flex min-h-screen flex-col">
+                <div className="flex-1 px-4 py-6">{children}</div>
+                <footer className="mx-auto w-full max-w-7xl border-t border-gray-50 px-4 py-4 text-xs text-muted-foreground">
                     {footerText}
                 </footer>
             </AppContent>

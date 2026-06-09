@@ -1,12 +1,43 @@
-import { Head, Link } from '@inertiajs/react';
-import { Clock, HelpCircle, CheckCircle, XCircle, Award, Users, BarChart3, ListOrdered, User } from 'lucide-react';
-import React from 'react';
+import { Head, Link, router } from '@inertiajs/react';
+import {
+    Clock,
+    HelpCircle,
+    CheckCircle,
+    XCircle,
+    Award,
+    Users,
+    BarChart3,
+    ListOrdered,
+    User,
+    Plus,
+    Edit,
+    Trash2,
+    Target,
+    ArrowLeft,
+} from 'lucide-react';
+import React, { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+} from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import AppLayout from '@/layouts/app-layout';
 import { cn } from '@/lib/utils';
+import ConfirmationModal from '@/components/ui/confirmation-modal';
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter,
+} from '@/components/ui/dialog';
+import { useActionMessages } from '@/hooks/use-action-messages';
 
 interface Option {
     key: string;
@@ -22,6 +53,7 @@ interface Question {
     explanation: string | null;
     points: number;
     order: number;
+    is_active: boolean;
 }
 
 interface Quiz {
@@ -60,98 +92,302 @@ interface Statistics {
 interface Props {
     quiz: Quiz;
     statistics: Statistics;
+    questionTypes: Record<string, string>;
 }
 
-export default function AdminQuizShow({ quiz, statistics }: Props) {
+export default function AdminQuizShow({
+    quiz,
+    statistics,
+    questionTypes,
+}: Props) {
+    const questionMessages = useActionMessages('Question');
+    const [deletingQuestion, setDeletingQuestion] = useState<number | null>(
+        null,
+    );
+    const [questionToDelete, setQuestionToDelete] = useState<number | null>(
+        null,
+    );
+    const [showAddQuestionModal, setShowAddQuestionModal] = useState(false);
+    const [showEditQuestionModal, setShowEditQuestionModal] = useState(false);
+    const [editingQuestionId, setEditingQuestionId] = useState<number | null>(
+        null,
+    );
+    const [questionForm, setQuestionForm] = useState({
+        question_text: '',
+        question_type: 'multiple_choice',
+        options: ['', '', '', ''],
+        correct_answer: '',
+        explanation: '',
+        points: 1,
+    });
+    const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
+    const optionKeyForIndex = (index: number) =>
+        String.fromCharCode(65 + index);
+
+    const extractOptionTexts = (options: (string | Option)[]) => {
+        return options.map((opt) => (typeof opt === 'string' ? opt : opt.text));
+    };
+
+    const resetQuestionForm = () => {
+        setQuestionForm({
+            question_text: '',
+            question_type: 'multiple_choice',
+            options: ['', '', '', ''],
+            correct_answer: '',
+            explanation: '',
+            points: 1,
+        });
+        setFormErrors({});
+    };
+
+    const openAddQuestionModal = () => {
+        resetQuestionForm();
+        setShowAddQuestionModal(true);
+    };
+
+    const closeAddQuestionModal = () => {
+        setShowAddQuestionModal(false);
+        resetQuestionForm();
+    };
+
+    const closeEditQuestionModal = () => {
+        setShowEditQuestionModal(false);
+        setEditingQuestionId(null);
+        resetQuestionForm();
+    };
+
+    const openEditQuestionModal = (question: Question) => {
+        setFormErrors({});
+        const optionTexts = extractOptionTexts(question.options);
+        const filledOptions = [...optionTexts];
+        while (filledOptions.length < 4) filledOptions.push('');
+
+        setQuestionForm({
+            question_text: question.question_text,
+            question_type: question.question_type,
+            options: filledOptions,
+            correct_answer: question.correct_answer,
+            explanation: question.explanation || '',
+            points: question.points,
+        });
+        setEditingQuestionId(question.id);
+        setShowEditQuestionModal(true);
+    };
+
+    const handleAddQuestion = (e: React.FormEvent) => {
+        e.preventDefault();
+        router.post(
+            `/admin/quizzes/${quiz.id}/questions`,
+            {
+                ...questionForm,
+                options:
+                    questionForm.question_type === 'short_answer'
+                        ? null
+                        : questionForm.options.filter(
+                              (opt) => opt.trim() !== '',
+                          ),
+            },
+            {
+                onSuccess: () => {
+                    // questionMessages.success('create');
+                    closeAddQuestionModal();
+                },
+                onError: (errors) => {
+                    setFormErrors(errors);
+                    questionMessages.error('create');
+                },
+            },
+        );
+    };
+
+    const handleUpdateQuestion = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingQuestionId) return;
+
+        router.put(
+            `/admin/quizzes/${quiz.id}/questions/${editingQuestionId}`,
+            {
+                ...questionForm,
+                options:
+                    questionForm.question_type === 'short_answer'
+                        ? null
+                        : questionForm.options.filter(
+                              (opt) => opt.trim() !== '',
+                          ),
+            },
+            {
+                onSuccess: () => {
+                    // questionMessages.success('update');
+                    setShowEditQuestionModal(false);
+                },
+                onError: (errors) => {
+                    setFormErrors(errors);
+                    questionMessages.error('update');
+                },
+            },
+        );
+    };
+
+    const handleDeleteQuestion = async () => {
+        if (!questionToDelete) return;
+        setDeletingQuestion(questionToDelete);
+        try {
+            await router.delete(
+                `/admin/quizzes/${quiz.id}/questions/${questionToDelete}`,
+            );
+            questionMessages.success('delete');
+        } catch (error) {
+            questionMessages.error('delete');
+        } finally {
+            setDeletingQuestion(null);
+            setQuestionToDelete(null);
+        }
+    };
+
     return (
-        <AppLayout breadcrumbs={[
-            { title: 'Dashboard', href: '/admin/dashboard' },
-            { title: 'Quiz Management', href: '/admin/quizzes' },
-            { title: quiz.title, href: '#' }
-        ]}>
+        <AppLayout
+            breadcrumbs={[
+                { title: 'Dashboard', href: '/admin/dashboard' },
+                { title: 'Quiz Management', href: '/admin/quizzes' },
+                {
+                    title: quiz.course?.title || 'Course',
+                    href: quiz.course
+                        ? `/admin/courses/${quiz.course.id}/lessons`
+                        : '/admin/courses',
+                },
+                { title: quiz.title, href: `/admin/quizzes/${quiz.id}` },
+            ]}
+        >
             <Head title={`Quiz: ${quiz.title}`} />
+
+            <div className="mb-4">
+                <Link
+                    href="/admin/quizzes"
+                    className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-200 text-gray-700 transition-colors hover:bg-gray-300"
+                    aria-label="Back to Quizzes"
+                >
+                    <ArrowLeft className="h-4 w-4" />
+                </Link>
+            </div>
 
             <div className="space-y-6">
                 {/* Header */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
                     <div className="flex items-center gap-4">
                         <div>
                             <div className="flex items-center gap-2">
-                                <h1 className="text-2xl font-bold text-gray-900">{quiz.title}</h1>
+                                <h1 className="page-title text-gray-900">
+                                    {quiz.title}
+                                </h1>
                                 {quiz.is_final_quiz && (
-                                    <Badge className="bg-indigo-100 text-indigo-700 hover:bg-indigo-100 border-none">
+                                    <Badge className="border-none bg-indigo-100 text-indigo-700 hover:bg-indigo-100">
                                         Final Quiz
                                     </Badge>
                                 )}
-                                <Badge variant={quiz.is_active ? "default" : "secondary"}>
+                                <Badge
+                                    variant={
+                                        quiz.is_active ? 'default' : 'secondary'
+                                    }
+                                >
                                     {quiz.is_active ? 'Active' : 'Inactive'}
                                 </Badge>
                             </div>
-                            <p className="text-sm text-gray-500">{quiz.course.title} • by {quiz.course.instructor.name}</p>
+                            <p className="text-sm text-gray-500">
+                                {quiz.course.title} • by{' '}
+                                {quiz.course.instructor.name}
+                            </p>
                         </div>
                     </div>
                     <div className="flex gap-2">
                         <Button variant="outline" asChild>
                             <Link href={`/admin/quizzes/${quiz.id}/edit`}>
+                                <Edit className="mr-2 h-4 w-4" />
                                 Edit Quiz
                             </Link>
+                        </Button>
+                        <Button onClick={openAddQuestionModal} variant="create">
+                            <Plus className="mr-2 h-4 w-4" />
+                            Add Question
                         </Button>
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                     {/* Left Column: Quiz Info & Stats */}
-                    <div className="lg:col-span-1 space-y-6">
+                    <div className="space-y-6 lg:col-span-1">
                         {/* Statistics Card */}
                         <Card>
                             <CardHeader>
-                                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                                <CardTitle className="flex items-center gap-2 text-sm font-medium">
                                     <BarChart3 className="h-4 w-4 text-indigo-500" />
                                     Performance Overview
                                 </CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 <div className="grid grid-cols-2 gap-4">
-                                    <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
-                                        <div className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Pass Rate</div>
-                                        <div className="text-xl font-bold text-indigo-600">{statistics.pass_rate}%</div>
+                                    <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                                        <div className="mb-1 text-xs font-bold tracking-wider text-gray-500 uppercase">
+                                            Pass Rate
+                                        </div>
+                                        <div className="text-xl font-bold text-indigo-600">
+                                            {statistics.pass_rate}%
+                                        </div>
                                     </div>
-                                    <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
-                                        <div className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Avg Score</div>
-                                        <div className="text-xl font-bold text-gray-900">{statistics.average_score}%</div>
+                                    <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                                        <div className="mb-1 text-xs font-bold tracking-wider text-gray-500 uppercase">
+                                            Avg Score
+                                        </div>
+                                        <div className="text-xl font-bold text-gray-900">
+                                            {statistics.average_score}%
+                                        </div>
                                     </div>
                                 </div>
-                                
+
                                 <div className="space-y-3 pt-2">
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="text-gray-500 flex items-center gap-2">
+                                    <div className="flex items-center justify-between text-sm">
+                                        <span className="flex items-center gap-2 text-gray-500">
                                             <Users className="h-3.5 w-3.5" />
                                             Total Attempts
                                         </span>
-                                        <span className="font-bold">{statistics.total_attempts}</span>
+                                        <span className="font-bold">
+                                            {statistics.total_attempts}
+                                        </span>
                                     </div>
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="text-gray-500 flex items-center gap-2">
+                                    <div className="flex items-center justify-between text-sm">
+                                        <span className="flex items-center gap-2 text-gray-500">
                                             <CheckCircle className="h-3.5 w-3.5 text-green-500" />
                                             Passed
                                         </span>
-                                        <span className="font-bold text-green-600">{statistics.passed_attempts}</span>
+                                        <span className="font-bold text-green-600">
+                                            {statistics.passed_attempts}
+                                        </span>
                                     </div>
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="text-gray-500 flex items-center gap-2">
+                                    <div className="flex items-center justify-between text-sm">
+                                        <span className="flex items-center gap-2 text-gray-500">
                                             <XCircle className="h-3.5 w-3.5 text-red-500" />
                                             Failed
                                         </span>
-                                        <span className="font-bold text-red-600">{statistics.failed_attempts}</span>
+                                        <span className="font-bold text-red-600">
+                                            {statistics.failed_attempts}
+                                        </span>
                                     </div>
                                     <Separator />
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="text-gray-500">Highest Score</span>
-                                        <span className="font-bold">{statistics.highest_score}%</span>
+                                    <div className="flex items-center justify-between text-sm">
+                                        <span className="text-gray-500">
+                                            Highest Score
+                                        </span>
+                                        <span className="font-bold">
+                                            {statistics.highest_score}%
+                                        </span>
                                     </div>
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="text-gray-500">Lowest Score</span>
-                                        <span className="font-bold">{statistics.lowest_score}%</span>
+                                    <div className="flex items-center justify-between text-sm">
+                                        <span className="text-gray-500">
+                                            Lowest Score
+                                        </span>
+                                        <span className="font-bold">
+                                            {statistics.lowest_score}%
+                                        </span>
                                     </div>
                                 </div>
                             </CardContent>
@@ -160,32 +396,52 @@ export default function AdminQuizShow({ quiz, statistics }: Props) {
                         {/* Quiz Settings Card */}
                         <Card>
                             <CardHeader>
-                                <CardTitle className="text-sm font-medium">Quiz Settings</CardTitle>
+                                <CardTitle className="text-sm font-medium">
+                                    Quiz Settings
+                                </CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 <div className="space-y-3">
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="text-gray-500">Time Limit</span>
-                                        <span className="font-medium">{quiz.time_limit ? `${quiz.time_limit} minutes` : 'Unlimited'}</span>
+                                    <div className="flex items-center justify-between text-sm">
+                                        <span className="text-gray-500">
+                                            Time Limit
+                                        </span>
+                                        <span className="font-medium">
+                                            {quiz.time_limit
+                                                ? `${quiz.time_limit} minutes`
+                                                : 'Unlimited'}
+                                        </span>
                                     </div>
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="text-gray-500">Total Marks</span>
-                                        <span className="font-medium">{quiz.total_marks} points</span>
+                                    <div className="flex items-center justify-between text-sm">
+                                        <span className="text-gray-500">
+                                            Total Marks
+                                        </span>
+                                        <span className="font-medium">
+                                            {quiz.total_marks} points
+                                        </span>
                                     </div>
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="text-gray-500">Passing Score</span>
-                                        <span className="font-medium text-indigo-600">{quiz.passing_score}%</span>
+                                    <div className="flex items-center justify-between text-sm">
+                                        <span className="text-gray-500">
+                                            Passing Score
+                                        </span>
+                                        <span className="font-medium text-indigo-600">
+                                            {quiz.passing_score}%
+                                        </span>
                                     </div>
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="text-gray-500">Max Attempts</span>
-                                        <span className="font-medium">{quiz.max_attempts}</span>
+                                    <div className="flex items-center justify-between text-sm">
+                                        <span className="text-gray-500">
+                                            Max Attempts
+                                        </span>
+                                        <span className="font-medium">
+                                            {quiz.max_attempts}
+                                        </span>
                                     </div>
                                     <Separator />
-                                    <div className="flex justify-between items-center text-xs text-gray-400 uppercase tracking-wider">
+                                    <div className="flex items-center justify-between text-xs tracking-wider text-gray-400 uppercase">
                                         <span>Created</span>
                                         <span>{quiz.created_at}</span>
                                     </div>
-                                    <div className="flex justify-between items-center text-xs text-gray-400 uppercase tracking-wider">
+                                    <div className="flex items-center justify-between text-xs tracking-wider text-gray-400 uppercase">
                                         <span>Last Updated</span>
                                         <span>{quiz.updated_at}</span>
                                     </div>
@@ -195,82 +451,167 @@ export default function AdminQuizShow({ quiz, statistics }: Props) {
                     </div>
 
                     {/* Right Column: Questions */}
-                    <div className="lg:col-span-2 space-y-6">
+                    <div className="space-y-6 lg:col-span-2">
                         <Card>
                             <CardHeader className="flex flex-row items-center justify-between">
                                 <div>
                                     <CardTitle>Questions List</CardTitle>
                                     <CardDescription>
-                                        Total {quiz.questions.length} questions in this quiz
+                                        Total {quiz.questions.length} questions
+                                        in this quiz
                                     </CardDescription>
                                 </div>
-                                <div className="h-10 w-10 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
                                     <ListOrdered className="h-5 w-5" />
                                 </div>
                             </CardHeader>
                             <CardContent className="p-0">
                                 <div className="divide-y divide-gray-100">
                                     {quiz.questions.length > 0 ? (
-                                        quiz.questions.map((question, index) => (
-                                            <div key={question.id} className="p-6 space-y-4">
-                                                <div className="flex justify-between items-start gap-4">
-                                                    <div className="flex gap-3">
-                                                        <span className="flex-shrink-0 flex items-center justify-center h-6 w-6 rounded-full bg-gray-100 text-xs font-bold text-gray-500">
-                                                            {index + 1}
-                                                        </span>
-                                                        <div className="space-y-1">
-                                                            <h4 className="text-sm font-semibold text-gray-900 leading-relaxed">
-                                                                {question.question_text}
-                                                            </h4>
-                                                            <div className="flex items-center gap-2">
-                                                                <Badge variant="outline" className="text-[10px] h-5 capitalize">
-                                                                    {question.question_type.replace('_', ' ')}
-                                                                </Badge>
-                                                                <span className="text-[10px] text-gray-400 uppercase font-bold">
-                                                                    {question.points} Points
-                                                                </span>
+                                        quiz.questions.map(
+                                            (question, index) => (
+                                                <div
+                                                    key={question.id}
+                                                    className="space-y-4 p-6"
+                                                >
+                                                    <div className="flex items-start justify-between gap-4">
+                                                        <div className="flex gap-3">
+                                                            <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-bold text-gray-500">
+                                                                {index + 1}
+                                                            </span>
+                                                            <div className="space-y-1">
+                                                                <h4 className="text-sm leading-relaxed font-semibold text-gray-900">
+                                                                    {
+                                                                        question.question_text
+                                                                    }
+                                                                </h4>
+                                                                <div className="flex items-center gap-2">
+                                                                    <Badge
+                                                                        variant="outline"
+                                                                        className="h-5 text-[10px] capitalize"
+                                                                    >
+                                                                        {(questionTypes &&
+                                                                            questionTypes[
+                                                                                question
+                                                                                    .question_type
+                                                                            ]) ||
+                                                                            question.question_type.replace(
+                                                                                '_',
+                                                                                ' ',
+                                                                            )}
+                                                                    </Badge>
+                                                                    <span className="text-[10px] font-bold text-gray-400 uppercase">
+                                                                        {
+                                                                            question.points
+                                                                        }{' '}
+                                                                        Points
+                                                                    </span>
+                                                                </div>
                                                             </div>
                                                         </div>
-                                                    </div>
-                                                </div>
-
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pl-9">
-                                                    {question.options.map((option, optIndex) => (
-                                                        <div 
-                                                            key={optIndex}
-                                                            className={cn(
-                                                                "p-3 rounded-lg border text-sm transition-colors",
-                                                                (typeof option === 'object' ? option.key === question.correct_answer : option === question.correct_answer) 
-                                                                    ? "bg-green-50 border-green-200 text-green-700 font-medium ring-1 ring-green-200" 
-                                                                    : "bg-white border-gray-100 text-gray-600"
-                                                            )}
-                                                        >
-                                                            <div className={cn(
-                                                                "flex items-center gap-2",
-                                                                (typeof option === 'object' ? option.key === question.correct_answer : option === question.correct_answer)
-                                                                    ? "text-green-700 font-medium" 
-                                                                    : "text-gray-600"
-                                                            )}>
-                                                                <span className="text-xs font-bold text-gray-400">
-                                                                    {typeof option === 'object' ? option.key : String.fromCharCode(65 + optIndex)}.
-                                                                </span>
-                                                                {typeof option === 'object' ? option.text : option}
-                                                                {(typeof option === 'object' ? option.key === question.correct_answer : option === question.correct_answer) && (
-                                                                    <CheckCircle className="h-3.5 w-3.5 text-green-500" />
-                                                                )}
-                                                            </div>
+                                                        <div className="flex gap-1">
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                onClick={() =>
+                                                                    openEditQuestionModal(
+                                                                        question,
+                                                                    )
+                                                                }
+                                                            >
+                                                                <Edit className="h-4 w-4 text-gray-400" />
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                onClick={() =>
+                                                                    setQuestionToDelete(
+                                                                        question.id,
+                                                                    )
+                                                                }
+                                                            >
+                                                                <Trash2 className="h-4 w-4 text-red-400" />
+                                                            </Button>
                                                         </div>
-                                                    ))}
-                                                </div>
-
-                                                {question.explanation && (
-                                                    <div className="ml-9 p-3 bg-indigo-50/50 rounded-lg border border-indigo-100 text-xs text-indigo-800">
-                                                        <span className="font-bold mr-1">Explanation:</span>
-                                                        {question.explanation}
                                                     </div>
-                                                )}
-                                            </div>
-                                        ))
+
+                                                    <div className="grid grid-cols-1 gap-3 pl-9 md:grid-cols-2">
+                                                        {question.options.map(
+                                                            (
+                                                                option,
+                                                                optIndex,
+                                                            ) => (
+                                                                <div
+                                                                    key={
+                                                                        optIndex
+                                                                    }
+                                                                    className={cn(
+                                                                        'rounded-lg border p-3 text-sm transition-colors',
+                                                                        (
+                                                                            typeof option ===
+                                                                            'object'
+                                                                                ? option.key ===
+                                                                                  question.correct_answer
+                                                                                : optionKeyForIndex(optIndex) ===
+                                                                                  question.correct_answer || option === question.correct_answer
+                                                                        )
+                                                                            ? 'border-green-200 bg-green-50 font-medium text-green-700 ring-1 ring-green-200'
+                                                                            : 'border-gray-100 bg-white text-gray-600',
+                                                                    )}
+                                                                >
+                                                                    <div
+                                                                        className={cn(
+                                                                            'flex items-center gap-2',
+                                                                            (
+                                                                                typeof option ===
+                                                                                'object'
+                                                                                    ? option.key ===
+                                                                                      question.correct_answer
+                                                                                    : optionKeyForIndex(optIndex) ===
+                                                                                      question.correct_answer || option === question.correct_answer
+                                                                            )
+                                                                                ? 'font-medium text-green-700'
+                                                                                : 'text-gray-600',
+                                                                        )}
+                                                                    >
+                                                                        <span className="text-xs font-bold text-gray-400">
+                                                                            {typeof option ===
+                                                                            'object'
+                                                                                ? option.key
+                                                                                : optionKeyForIndex(optIndex)}
+                                                                            .
+                                                                        </span>
+                                                                        {typeof option ===
+                                                                        'object'
+                                                                            ? option.text
+                                                                            : option}
+                                                                        {(typeof option ===
+                                                                        'object'
+                                                                            ? option.key ===
+                                                                              question.correct_answer
+                                                                            : optionKeyForIndex(optIndex) ===
+                                                                              question.correct_answer || option === question.correct_answer) && (
+                                                                            <CheckCircle className="h-3.5 w-3.5 text-green-500" />
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            ),
+                                                        )}
+                                                    </div>
+
+                                                    {question.explanation && (
+                                                        <div className="ml-9 rounded-lg border border-indigo-100 bg-indigo-50/50 p-3 text-xs text-indigo-800">
+                                                            <span className="mr-1 font-bold">
+                                                                Explanation:
+                                                            </span>
+                                                            {
+                                                                question.explanation
+                                                            }
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ),
+                                        )
                                     ) : (
                                         <div className="py-12 text-center text-gray-500 italic">
                                             No questions found for this quiz.
@@ -282,6 +623,251 @@ export default function AdminQuizShow({ quiz, statistics }: Props) {
                     </div>
                 </div>
             </div>
+
+            {/* Question Modals (Add/Edit) */}
+            <Dialog
+                open={showAddQuestionModal || showEditQuestionModal}
+                onOpenChange={(open) =>
+                    !open &&
+                    (showAddQuestionModal
+                        ? closeAddQuestionModal()
+                        : closeEditQuestionModal())
+                }
+            >
+                <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>
+                            {showAddQuestionModal ? 'Add New Question' : 'Edit Question'}
+                        </DialogTitle>
+                        <DialogDescription>{quiz.title}</DialogDescription>
+                    </DialogHeader>
+
+                        <form
+                            onSubmit={
+                                showAddQuestionModal
+                                    ? handleAddQuestion
+                                    : handleUpdateQuestion
+                            }
+                            className="space-y-6"
+                        >
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="mb-1 block text-sm text-[10px] font-bold tracking-wider text-gray-700 uppercase">
+                                        Question Text
+                                    </label>
+                                    <textarea
+                                        value={questionForm.question_text}
+                                        onChange={(e) =>
+                                            setQuestionForm({
+                                                ...questionForm,
+                                                question_text: e.target.value,
+                                            })
+                                        }
+                                        className="min-h-[100px] w-full rounded-xl border border-gray-200 px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                        placeholder="Enter your question here..."
+                                        required
+                                    />
+                                    {formErrors.question_text && (
+                                        <p className="mt-1 text-xs text-red-500">
+                                            {formErrors.question_text}
+                                        </p>
+                                    )}
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-4">
+                                    <div>
+                                        <label className="mb-1 block text-sm text-[10px] font-bold tracking-wider text-gray-700 uppercase">
+                                            Points
+                                        </label>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            value={questionForm.points}
+                                            onChange={(e) =>
+                                                setQuestionForm({
+                                                    ...questionForm,
+                                                    points: parseInt(
+                                                        e.target.value,
+                                                    ),
+                                                })
+                                            }
+                                            className="w-full rounded-xl border border-gray-200 px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                        />
+                                    </div>
+                                </div>
+
+                                {true && (
+                                    <div className="space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <label className="block text-sm text-[10px] font-bold tracking-wider text-gray-700 uppercase">
+                                                Options & Correct Answer
+                                            </label>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setQuestionForm({
+                                                        ...questionForm,
+                                                        options: [...questionForm.options, ''],
+                                                    });
+                                                }}
+                                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase"
+                                            >
+                                                + Add Option
+                                            </button>
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-3">
+                                            {questionForm.options.map(
+                                                (opt, idx) => (
+                                                    <div
+                                                        key={idx}
+                                                        className="flex items-center gap-3"
+                                                    >
+                                                        <div className="flex-shrink-0">
+                                                            <input
+                                                                type="radio"
+                                                                name="correct_answer"
+                                                                checked={
+                                                                    questionForm.correct_answer ===
+                                                                    optionKeyForIndex(
+                                                                        idx,
+                                                                    )
+                                                                }
+                                                                onChange={() =>
+                                                                    setQuestionForm(
+                                                                        {
+                                                                            ...questionForm,
+                                                                            correct_answer:
+                                                                                optionKeyForIndex(
+                                                                                    idx,
+                                                                                ),
+                                                                        },
+                                                                    )
+                                                                }
+                                                                className="h-5 w-5 border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                                required
+                                                            />
+                                                        </div>
+                                                        <div className="relative flex-1 flex items-center gap-2">
+                                                            <div className="relative flex-1">
+                                                                <span className="absolute top-1/2 left-3 -translate-y-1/2 text-xs font-bold text-gray-400">
+                                                                    {optionKeyForIndex(
+                                                                        idx,
+                                                                    )}
+                                                                </span>
+                                                                <input
+                                                                    type="text"
+                                                                    value={opt}
+                                                                    onChange={(
+                                                                        e,
+                                                                    ) => {
+                                                                        const newOpts =
+                                                                            [
+                                                                                ...questionForm.options,
+                                                                            ];
+                                                                        newOpts[
+                                                                            idx
+                                                                        ] =
+                                                                            e.target.value;
+                                                                        setQuestionForm(
+                                                                            {
+                                                                                ...questionForm,
+                                                                                options:
+                                                                                    newOpts,
+                                                                            },
+                                                                        );
+                                                                    }}
+                                                                    className="w-full rounded-xl border border-gray-200 py-2.5 pr-4 pl-8 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                                                    placeholder={`Option ${optionKeyForIndex(idx)}`}
+                                                                    required={
+                                                                        idx < 2
+                                                                    }
+                                                                />
+                                                            </div>
+                                                            {questionForm.options.length > 2 && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        const newOptions = questionForm.options.filter((_, i) => i !== idx);
+                                                                        let newCorrectAnswer = questionForm.correct_answer;
+                                                                        const removedKey = optionKeyForIndex(idx);
+                                                                        
+                                                                        if (newCorrectAnswer === removedKey) {
+                                                                            newCorrectAnswer = '';
+                                                                        } else if (newCorrectAnswer > removedKey) {
+                                                                            newCorrectAnswer = String.fromCharCode(newCorrectAnswer.charCodeAt(0) - 1);
+                                                                        }
+                                                                        
+                                                                        setQuestionForm({
+                                                                            ...questionForm,
+                                                                            options: newOptions,
+                                                                            correct_answer: newCorrectAnswer,
+                                                                        });
+                                                                    }}
+                                                                    className="text-red-400 hover:text-red-600"
+                                                                >
+                                                                    <Trash2 className="h-4 w-4" />
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ),
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+
+                                <div>
+                                    <label className="mb-1 block text-sm text-[10px] font-bold tracking-wider text-gray-700 uppercase">
+                                        Explanation (Optional)
+                                    </label>
+                                    <textarea
+                                        value={questionForm.explanation}
+                                        onChange={(e) =>
+                                            setQuestionForm({
+                                                ...questionForm,
+                                                explanation: e.target.value,
+                                            })
+                                        }
+                                        className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                        placeholder="Why is this answer correct?"
+                                    />
+                                </div>
+                            </div>
+
+                            <DialogFooter className="pt-4">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={
+                                        showAddQuestionModal
+                                            ? closeAddQuestionModal
+                                            : closeEditQuestionModal
+                                    }
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    type="submit"
+                                    variant="create"
+                                >
+                                    {showAddQuestionModal ? 'Add Question' : 'Update Question'}
+                                </Button>
+                            </DialogFooter>
+                        </form>
+                </DialogContent>
+            </Dialog>
+
+            <ConfirmationModal
+                isOpen={!!questionToDelete}
+                onClose={() => setQuestionToDelete(null)}
+                onConfirm={handleDeleteQuestion}
+                title="Delete Question?"
+                message="Are you sure you want to remove this question? This action cannot be undone."
+                confirmText="Yes, Delete"
+                variant="danger"
+                isLoading={!!deletingQuestion}
+            />
         </AppLayout>
     );
 }

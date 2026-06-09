@@ -1,0 +1,20 @@
+/* Custom styles for the DataTable component */
+
+.custom-data-table .min-w-full {
+    border: 1px solid #e2e8f0; /* Add a border to the table */
+    border-radius: 0.75rem; /* Rounded corners for the table */
+    overflow: hidden; /* Ensures the child elements adhere to the border radius */
+}
+
+.custom-data-table thead {
+    background-color: #f8fafc; /* Lighter background for the header */
+}
+
+.custom-data-table th {
+    font-weight: 600; /* Bolder header text */
+    color: #475569; /* Slate color for header text */
+}
+
+.custom-data-table tbody tr:hover {
+    background-color: #f1f5f9; /* Lighter hover for rows */
+}

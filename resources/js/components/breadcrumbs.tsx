@@ -33,14 +33,19 @@ export function Breadcrumbs({
                                         {item.title}
                                     </BreadcrumbPage>
                                 ) : (
-                                    <BreadcrumbLink asChild className="text-muted-foreground hover:text-foreground transition-colors">
+                                    <BreadcrumbLink
+                                        asChild
+                                        className="text-muted-foreground transition-colors hover:text-foreground"
+                                    >
                                         <Link href={item.href}>
                                             {item.title}
                                         </Link>
                                     </BreadcrumbLink>
                                 )}
                             </BreadcrumbItem>
-                            {!isLast && <BreadcrumbSeparator className="opacity-50" />}
+                            {!isLast && (
+                                <BreadcrumbSeparator className="opacity-50" />
+                            )}
                         </Fragment>
                     );
                 })}

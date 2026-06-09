@@ -1,12 +1,26 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { ArrowLeft, User, Clock, BookOpen, PlayCircle, FileText, HelpCircle, Award, Users, Play, Heart, CheckCircle } from 'lucide-react';
+import {
+    ArrowLeft,
+    User,
+    Clock,
+    BookOpen,
+    PlayCircle,
+    FileText,
+    HelpCircle,
+    Award,
+    Users,
+    Play,
+    Heart,
+    CheckCircle,
+} from 'lucide-react';
 import EnrollmentButton from '@/components/enrollment/enrollment-button';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AppLayout from '@/layouts/app-layout';
-import { cn } from '@/lib/utils';
+import { cn, formatDuration } from '@/lib/utils';
 
 interface Course {
     id: number;
@@ -15,6 +29,7 @@ interface Course {
     description: string;
     objectives: string | null;
     price: number;
+    access_duration: number;
     duration_hours: number;
     difficulty_level: string;
     thumbnail: string | null;
@@ -47,6 +62,9 @@ interface Props {
         status: string;
         progress: number;
         completion_date: string | null;
+        formatted_expiry_date?: string | null;
+        days_left?: number | null;
+        is_expired?: boolean;
     } | null;
     isWishlisted: boolean;
     stats: {
@@ -60,59 +78,88 @@ interface Props {
     } | null;
 }
 
-export default function Show({ course, enrollmentStatus, isWishlisted, stats, user }: Props) {
+export default function Show({
+    course,
+    enrollmentStatus,
+    isWishlisted,
+    stats,
+    user,
+}: Props) {
     const getDifficultyBadgeColor = (difficulty: string) => {
         switch (difficulty) {
-            case 'Beginner': return 'bg-green-100 text-green-800';
-            case 'Intermediate': return 'bg-yellow-100 text-yellow-800';
-            case 'Advanced': return 'bg-red-100 text-red-800';
-            default: return 'bg-gray-100 text-gray-800';
+            case 'Beginner':
+                return 'bg-green-100 text-green-800';
+            case 'Intermediate':
+                return 'bg-yellow-100 text-yellow-800';
+            case 'Advanced':
+                return 'bg-red-100 text-red-800';
+            default:
+                return 'bg-gray-100 text-gray-800';
         }
     };
 
     const toggleWishlist = () => {
-        router.post('/student/wishlist/toggle', {
-            course_id: course.id
-        }, {
-            preserveScroll: true
-        });
+        router.post(
+            '/student/wishlist/toggle',
+            {
+                course_id: course.id,
+            },
+            {
+                preserveScroll: true,
+            },
+        );
     };
 
     const getLessonIcon = (type: string) => {
         switch (type) {
-            case 'Video': return <PlayCircle className="h-4 w-4" />;
-            case 'Text': return <FileText className="h-4 w-4" />;
-            case 'Quiz': return <HelpCircle className="h-4 w-4" />;
-            case 'Assignment': return <Award className="h-4 w-4" />;
-            default: return <BookOpen className="h-4 w-4" />;
+            case 'Video':
+                return <PlayCircle className="h-4 w-4" />;
+            case 'Text':
+                return <FileText className="h-4 w-4" />;
+            case 'Quiz':
+                return <HelpCircle className="h-4 w-4" />;
+            case 'Assignment':
+                return <Award className="h-4 w-4" />;
+            default:
+                return <BookOpen className="h-4 w-4" />;
         }
     };
 
     const getLessonTypeColor = (type: string) => {
         switch (type) {
-            case 'Video': return 'text-blue-600';
-            case 'Text': return 'text-gray-600';
-            case 'Quiz': return 'text-green-600';
-            case 'Assignment': return 'text-purple-600';
-            default: return 'text-gray-600';
+            case 'Video':
+                return 'text-blue-600';
+            case 'Text':
+                return 'text-gray-600';
+            case 'Quiz':
+                return 'text-green-600';
+            case 'Assignment':
+                return 'text-purple-600';
+            default:
+                return 'text-gray-600';
         }
     };
 
     return (
-        <AppLayout breadcrumbs={[
-            { title: 'Dashboard', href: '/student/dashboard' },
-            { title: 'Course Catalog', href: '/student/courses' },
-            { title: course.title, href: '#' }
-        ]}>
+        <AppLayout
+            breadcrumbs={[
+                { title: 'Dashboard', href: '/student/dashboard' },
+                { title: 'Courses', href: '/student/courses' },
+                { title: course.title, href: '#' },
+            ]}
+        >
             <Head title={course.title} />
 
             <div className="space-y-6">
                 {/* Back Button */}
                 <div className="flex items-center justify-between">
                     <Link href="/student/courses">
-                        <Button variant="outline" size="sm">
-                            <ArrowLeft className="h-4 w-4 mr-2" />
-                            Back to Courses
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-9 w-9 rounded-full p-0 shadow-sm transition-all hover:bg-slate-100"
+                        >
+                            <ArrowLeft className="h-5 w-5" />
                         </Button>
                     </Link>
 
@@ -121,40 +168,61 @@ export default function Show({ course, enrollmentStatus, isWishlisted, stats, us
                             variant="outline"
                             onClick={toggleWishlist}
                             className={cn(
-                                "rounded-xl transition-all duration-300",
-                                isWishlisted 
-                                    ? "bg-rose-50 text-rose-600 border-rose-200" 
-                                    : "text-slate-500 hover:text-rose-600 hover:bg-rose-50"
+                                'rounded-xl transition-all duration-300',
+                                isWishlisted
+                                    ? 'border-rose-200 bg-rose-50 text-rose-600'
+                                    : 'text-slate-500 hover:bg-rose-50 hover:text-rose-600',
                             )}
                         >
-                            <Heart className={cn("h-4 w-4 mr-2", isWishlisted && "fill-current")} />
-                            {isWishlisted ? 'Saved to Wishlist' : 'Save for Later'}
+                            <Heart
+                                className={cn(
+                                    'mr-2 h-4 w-4',
+                                    isWishlisted && 'fill-current',
+                                )}
+                            />
+                            {isWishlisted
+                                ? 'Saved to Wishlist'
+                                : 'Save for Later'}
                         </Button>
                     )}
                 </div>
 
                 {/* Course Header */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div className="lg:col-span-2 space-y-6">
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                    <div className="space-y-6 lg:col-span-2">
                         {/* Course Info */}
-                        <Card className="border-none shadow-xl rounded-3xl overflow-hidden">
+                        <Card className="overflow-hidden rounded-3xl border-none shadow-xl">
                             <CardContent className="pt-6">
                                 {course.thumbnail && (
-                                    <div className="aspect-video bg-gray-100 rounded-2xl mb-6 overflow-hidden shadow-inner">
+                                    <div className="mb-6 aspect-video overflow-hidden rounded-2xl bg-gray-100 shadow-inner">
                                         <img
                                             src={course.thumbnail}
                                             alt={course.title}
-                                            className="w-full h-full object-cover"
+                                            className="h-full w-full object-cover"
                                         />
                                     </div>
                                 )}
-                                
+
                                 <div className="space-y-4">
                                     <div>
-                                        <h1 className="text-3xl font-black mb-2 text-slate-900 leading-tight">{course.title}</h1>
-                                        <div className="flex flex-wrap gap-2 mb-4">
-                                            <Badge variant="outline" className="bg-indigo-50 text-indigo-600 border-none font-bold uppercase text-[10px] tracking-widest">{course.category.name}</Badge>
-                                            <Badge className={cn("border-none font-bold uppercase text-[10px] tracking-widest", getDifficultyBadgeColor(course.difficulty_level))}>
+                                        <h1 className="page-title mb-2 leading-tight font-black text-slate-900">
+                                            {course.title}
+                                        </h1>
+                                        <div className="mb-4 flex flex-wrap gap-2">
+                                            <Badge
+                                                variant="outline"
+                                                className="border-none bg-indigo-50 text-[10px] font-bold tracking-widest text-indigo-600 uppercase"
+                                            >
+                                                {course.category.name}
+                                            </Badge>
+                                            <Badge
+                                                className={cn(
+                                                    'border-none text-[10px] font-bold tracking-widest uppercase',
+                                                    getDifficultyBadgeColor(
+                                                        course.difficulty_level,
+                                                    ),
+                                                )}
+                                            >
                                                 {course.difficulty_level}
                                             </Badge>
                                         </div>
@@ -162,14 +230,16 @@ export default function Show({ course, enrollmentStatus, isWishlisted, stats, us
 
                                     <div className="flex items-center gap-4 text-sm font-bold text-slate-500">
                                         <div className="flex items-center gap-1.5">
-                                            <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 text-xs">
-                                                {course.instructor.name.charAt(0)}
+                                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs text-slate-500">
+                                                {course.instructor.name.charAt(
+                                                    0,
+                                                )}
                                             </div>
                                             {course.instructor.name}
                                         </div>
                                         <div className="flex items-center gap-1.5">
                                             <Clock className="h-4 w-4 text-slate-400" />
-                                            {course.duration_hours} hours
+                                            {formatDuration(course.duration_hours)}
                                         </div>
                                         <div className="flex items-center gap-1.5">
                                             <BookOpen className="h-4 w-4 text-slate-400" />
@@ -183,128 +253,209 @@ export default function Show({ course, enrollmentStatus, isWishlisted, stats, us
 
                                     <Separator className="bg-slate-50" />
 
-                                    <div>
-                                        <h3 className="text-lg font-black text-slate-800 mb-2 uppercase tracking-widest text-[10px]">Description</h3>
-                                        <p className="text-slate-600 leading-relaxed font-medium">
-                                            {course.description}
-                                        </p>
-                                    </div>
-
-                                    {course.objectives && (
-                                        <>
-                                            <Separator className="bg-slate-50" />
-                                            <div>
-                                                <h3 className="text-lg font-black text-slate-800 mb-2 uppercase tracking-widest text-[10px]">Learning Objectives</h3>
-                                                <p className="text-slate-600 leading-relaxed font-medium">
-                                                    {course.objectives}
-                                                </p>
+                                    <Tabs defaultValue="overview" className="w-full">
+                                        <TabsList className="grid w-full grid-cols-2 bg-slate-100/50 p-1">
+                                            <TabsTrigger value="overview" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-indigo-600 data-[state=active]:shadow-sm">
+                                                Overview
+                                            </TabsTrigger>
+                                            <TabsTrigger value="curriculum" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-indigo-600 data-[state=active]:shadow-sm">
+                                                Curriculum
+                                            </TabsTrigger>
+                                        </TabsList>
+                                        
+                                        <TabsContent value="overview" className="mt-6 space-y-6 animate-in fade-in duration-500">
+                                            <div className="space-y-4">
+                                                <h3 className="text-xl font-black text-slate-900">
+                                                    About this course
+                                                </h3>
+                                                <div className="prose max-w-none text-slate-600 leading-relaxed">
+                                                    {course.description}
+                                                </div>
                                             </div>
-                                        </>
-                                    )}
-                                </div>
-                            </CardContent>
-                        </Card>
 
-                        {/* Course Content */}
-                        <Card className="border-none shadow-xl rounded-3xl overflow-hidden">
-                            <CardHeader className="bg-slate-50/50 border-b border-slate-100">
-                                <CardTitle className="text-lg font-black text-slate-800">Course Content</CardTitle>
-                                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-                                    {stats.total_lessons} modules • {course.duration_hours} hours total
-                                </p>
-                            </CardHeader>
-                            <CardContent className="pt-6">
-                                {course.lessons.length > 0 ? (
-                                    <div className="space-y-3">
-                                        {course.lessons.map((lesson, index) => (
-                                            <div key={lesson.id} className="flex items-center gap-4 p-4 border border-slate-100 rounded-2xl hover:bg-slate-50 transition-colors group">
-                                                <div className="flex-shrink-0">
-                                                    <div className={cn("h-10 w-10 rounded-xl bg-slate-100 flex items-center justify-center transition-colors group-hover:bg-white", getLessonTypeColor(lesson.type))}>
-                                                        {getLessonIcon(lesson.type)}
+                                            {course.objectives && (
+                                                <div className="rounded-2xl bg-indigo-50/50 p-6 ring-1 ring-indigo-100">
+                                                    <h3 className="mb-4 text-lg font-bold text-indigo-900">
+                                                        What you'll learn
+                                                    </h3>
+                                                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                                        {course.objectives
+                                                            .split('\n')
+                                                            .filter((o) => o.trim())
+                                                            .map((objective, i) => (
+                                                                <div
+                                                                    key={i}
+                                                                    className="flex items-start gap-2 text-sm text-slate-700"
+                                                                >
+                                                                    <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" />
+                                                                    <span>{objective}</span>
+                                                                </div>
+                                                            ))}
                                                     </div>
                                                 </div>
-                                                <div className="flex-1">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-sm font-bold text-slate-800">
-                                                            {index + 1}. {lesson.title}
-                                                        </span>
-                                                        <Badge variant="outline" className="text-[9px] font-black uppercase tracking-widest border-slate-200 text-slate-400 bg-white">
-                                                            {lesson.type}
-                                                        </Badge>
-                                                    </div>
-                                                    {lesson.description && (
-                                                        <div className="text-xs font-medium text-slate-500 mt-1 line-clamp-1">
-                                                            {lesson.description}
+                                            )}
+                                        </TabsContent>
+
+                                        <TabsContent value="curriculum" className="mt-6 animate-in fade-in duration-500">
+                                            <div className="space-y-4">
+                                                <div className="flex items-center justify-between">
+                                                    <h3 className="text-xl font-black text-slate-900">
+                                                        Course Content
+                                                    </h3>
+                                                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                                                        {course.lessons.length} Modules
+                                                    </span>
+                                                </div>
+                                                <div className="space-y-3">
+                                                    {course.lessons.map((lesson, index) => (
+                                                        <div
+                                                            key={lesson.id}
+                                                            className="group flex items-center justify-between rounded-2xl border border-slate-100 bg-white p-4 transition-all hover:border-indigo-200 hover:shadow-lg hover:shadow-indigo-500/5"
+                                                        >
+                                                            <div className="flex items-center gap-4">
+                                                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 font-bold text-slate-400 transition-colors group-hover:bg-indigo-50 group-hover:text-indigo-600">
+                                                                    {index + 1}
+                                                                </div>
+                                                                <div>
+                                                                    <h4 className="font-bold text-slate-900 group-hover:text-indigo-600">
+                                                                        {lesson.title}
+                                                                    </h4>
+                                                                    <div className="flex items-center gap-2 text-xs font-medium text-slate-400">
+                                                                        <span
+                                                                            className={cn(
+                                                                                'flex items-center gap-1',
+                                                                                getLessonTypeColor(
+                                                                                    lesson.type,
+                                                                                ),
+                                                                            )}
+                                                                        >
+                                                                            {getLessonIcon(
+                                                                                lesson.type,
+                                                                            )}
+                                                                            {lesson.type}
+                                                                        </span>
+                                                                        <span>•</span>
+                                                                        <span>
+                                                                            {
+                                                                                lesson.duration_display
+                                                                            }
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <Play className="h-4 w-4 text-slate-200 group-hover:text-indigo-600" />
                                                         </div>
-                                                    )}
-                                                    <div className="flex items-center gap-3 mt-1 text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
-                                                        <span>{lesson.duration_display}</span>
-                                                        {lesson.estimated_duration > 0 && (
-                                                            <span>• Estimated {lesson.estimated_duration} mins</span>
-                                                        )}
-                                                    </div>
+                                                    ))}
                                                 </div>
                                             </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="text-center py-12">
-                                        <BookOpen className="h-12 w-12 mx-auto text-slate-200 mb-4" />
-                                        <p className="text-slate-400 font-bold">No lessons available yet</p>
-                                    </div>
-                                )}
+                                        </TabsContent>
+                                    </Tabs>
+                                </div>
                             </CardContent>
                         </Card>
                     </div>
 
                     {/* Sidebar */}
                     <div className="space-y-6">
-                        {enrollmentStatus && enrollmentStatus.status === 'Active' && enrollmentStatus.payment_status !== 'Pending' ? (
-                            <Card className="border-none shadow-xl rounded-3xl bg-gradient-to-br from-indigo-600 to-violet-700 text-white overflow-hidden relative group">
-                                <div className="absolute top-0 right-0 -mr-8 -mt-8 h-32 w-32 rounded-full bg-white/10 blur-2xl group-hover:bg-white/20 transition-colors"></div>
-                                <CardContent className="p-6 space-y-6 relative z-10">
+                        {enrollmentStatus &&
+                        enrollmentStatus.status === 'Active' &&
+                        enrollmentStatus.payment_status !== 'Pending' ? (
+                            <Card className="group relative overflow-hidden rounded-3xl border-none bg-gradient-to-br from-indigo-600 to-violet-700 text-white shadow-xl">
+                                <div className="absolute top-0 right-0 -mt-8 -mr-8 h-32 w-32 rounded-full bg-white/10 blur-2xl transition-colors group-hover:bg-white/20"></div>
+                                <CardContent className="relative z-10 space-y-6 p-6">
                                     <div className="flex items-center justify-between">
                                         <div className="space-y-1">
-                                            <div className="text-[10px] font-black text-indigo-100 uppercase tracking-[0.2em]">Your Progress</div>
-                                            <div className="text-4xl font-black tracking-tight">{Number(enrollmentStatus.progress || 0).toFixed(0)}%</div>
+                                            <div className="text-[10px] font-black tracking-[0.2em] text-indigo-100 uppercase">
+                                                Your Progress
+                                            </div>
+                                            <div className="text-4xl font-black tracking-tight">
+                                                {Number(
+                                                    enrollmentStatus.progress ||
+                                                        0,
+                                                ).toFixed(0)}
+                                                %
+                                            </div>
                                         </div>
-                                        <div className="h-14 w-14 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center border border-white/20">
+                                        <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/20 bg-white/10 backdrop-blur-md">
                                             <Award className="h-8 w-8 text-white" />
                                         </div>
                                     </div>
-                                    
+
                                     <div className="space-y-2">
-                                        <div className="h-2 w-full bg-white/20 rounded-full overflow-hidden">
-                                            <div 
-                                                className="h-full bg-white rounded-full transition-all duration-1000 ease-out shadow-[0_0_15px_rgba(255,255,255,0.5)]"
-                                                style={{ width: `${enrollmentStatus.progress}%` }}
+                                        <div className="h-2 w-full overflow-hidden rounded-full bg-white/20">
+                                            <div
+                                                className="h-full rounded-full bg-white shadow-[0_0_15px_rgba(255,255,255,0.5)] transition-all duration-1000 ease-out"
+                                                style={{
+                                                    width: `${enrollmentStatus.progress}%`,
+                                                }}
                                             ></div>
                                         </div>
                                         {enrollmentStatus.completion_date && (
-                                            <div className="flex items-center gap-1.5 text-[10px] font-bold text-indigo-100 uppercase tracking-wider">
+                                            <div className="flex items-center gap-1.5 text-[10px] font-bold tracking-wider text-indigo-100 uppercase">
                                                 <CheckCircle className="h-3 w-3" />
-                                                Completed on {new Date(enrollmentStatus.completion_date).toLocaleDateString()}
+                                                Completed on{' '}
+                                                {new Date(
+                                                    enrollmentStatus.completion_date,
+                                                ).toLocaleDateString()}
+                                            </div>
+                                        )}
+                                        {enrollmentStatus.formatted_expiry_date && (
+                                            <div
+                                                className={cn(
+                                                    'flex items-center gap-1.5 text-[10px] font-bold tracking-wider uppercase',
+                                                    enrollmentStatus.is_expired
+                                                        ? 'text-rose-200'
+                                                        : 'text-indigo-100',
+                                                )}
+                                            >
+                                                <Clock className="h-3 w-3" />
+                                                {enrollmentStatus.is_expired
+                                                    ? `Expired on ${enrollmentStatus.formatted_expiry_date}`
+                                                    : `Expires on ${enrollmentStatus.formatted_expiry_date} (${enrollmentStatus.days_left} days left)`}
+                                            </div>
+                                        )}
+                                        {!enrollmentStatus.formatted_expiry_date && (
+                                            <div className="flex items-center gap-1.5 text-[10px] font-bold tracking-wider text-indigo-100 uppercase">
+                                                <Clock className="h-3 w-3" />
+                                                Lifetime Access
                                             </div>
                                         )}
                                     </div>
 
-                                    <Link href={`/student/enrollments/${enrollmentStatus.id}`} className="block">
-                                        <Button className="w-full bg-white text-indigo-600 hover:bg-indigo-50 font-black rounded-2xl h-12 shadow-xl shadow-indigo-900/20 transition-all hover:scale-[1.02] active:scale-[0.98] border-none" size="lg">
-                                            <Play className="h-4 w-4 mr-2 fill-current" />
-                                            Resume Learning
+                                    {enrollmentStatus.is_expired ? (
+                                        <Button
+                                            className="h-12 w-full rounded-2xl border-none bg-white/20 font-black text-white shadow-none"
+                                            size="lg"
+                                            disabled
+                                        >
+                                            <Clock className="mr-2 h-4 w-4" />
+                                            Access Expired
                                         </Button>
-                                    </Link>
+                                    ) : (
+                                        <Link
+                                            href={`/student/enrollments/${enrollmentStatus.id}`}
+                                            className="block"
+                                        >
+                                            <Button
+                                                className="h-12 w-full rounded-2xl border-none bg-white font-black text-indigo-600 shadow-xl shadow-indigo-900/20 transition-all hover:scale-[1.02] hover:bg-indigo-50 active:scale-[0.98]"
+                                                size="lg"
+                                            >
+                                                <Play className="mr-2 h-4 w-4 fill-current" />
+                                                Resume Learning
+                                            </Button>
+                                        </Link>
+                                    )}
                                 </CardContent>
                             </Card>
                         ) : (
                             /* Enrollment Card for non-enrolled or pending */
                             <div className="space-y-4">
-                                <EnrollmentButton 
+                                <EnrollmentButton
                                     course={{
                                         id: course.id,
                                         title: course.title,
                                         price: course.price,
-                                        status: 'Published'
+                                        status: 'Published',
                                     }}
                                     user={user || undefined}
                                     initialEnrollment={enrollmentStatus}
@@ -314,61 +465,100 @@ export default function Show({ course, enrollmentStatus, isWishlisted, stats, us
                         )}
 
                         {/* Course Stats */}
-                        <Card className="border-none shadow-xl rounded-3xl overflow-hidden bg-white">
-                            <CardHeader className="bg-slate-50/50 border-b border-slate-100/80 px-6 py-4">
-                                <CardTitle className="text-xs font-black text-slate-800 uppercase tracking-[0.15em]">Course Statistics</CardTitle>
+                        <Card className="overflow-hidden rounded-3xl border-none bg-white shadow-xl">
+                            <CardHeader className="border-b border-slate-100/80 bg-slate-50/50 px-6 py-4">
+                                <CardTitle className="text-xs font-black tracking-[0.15em] text-slate-800 uppercase">
+                                    Course Statistics
+                                </CardTitle>
                             </CardHeader>
-                            <CardContent className="p-6 space-y-5">
+                            <CardContent className="space-y-5 p-6">
                                 <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-1 p-3 rounded-2xl bg-slate-50 border border-slate-100">
-                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Lessons</div>
-                                        <div className="font-black text-slate-800 flex items-center gap-1.5">
+                                    <div className="space-y-1 rounded-2xl border border-slate-100 bg-slate-50 p-3">
+                                        <div className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">
+                                            Lessons
+                                        </div>
+                                        <div className="flex items-center gap-1.5 font-black text-slate-800">
                                             <BookOpen className="h-3.5 w-3.5 text-indigo-500" />
                                             {stats.total_lessons}
                                         </div>
                                     </div>
-                                    <div className="space-y-1 p-3 rounded-2xl bg-slate-50 border border-slate-100">
-                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Students</div>
-                                        <div className="font-black text-slate-800 flex items-center gap-1.5">
+                                    <div className="space-y-1 rounded-2xl border border-slate-100 bg-slate-50 p-3">
+                                        <div className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">
+                                            Students
+                                        </div>
+                                        <div className="flex items-center gap-1.5 font-black text-slate-800">
                                             <Users className="h-3.5 w-3.5 text-violet-500" />
                                             {stats.total_enrollments}
                                         </div>
                                     </div>
-                                    <div className="space-y-1 p-3 rounded-2xl bg-slate-50 border border-slate-100">
-                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Duration</div>
-                                        <div className="font-black text-slate-800 flex items-center gap-1.5">
+                                    <div className="space-y-1 rounded-2xl border border-slate-100 bg-slate-50 p-3">
+                                        <div className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">
+                                            Duration
+                                        </div>
+                                        <div className="flex items-center gap-1.5 font-black text-slate-800">
                                             <Clock className="h-3.5 w-3.5 text-amber-500" />
-                                            {course.duration_hours}h
+                                            {formatDuration(course.duration_hours)}
                                         </div>
                                     </div>
-                                    <div className="space-y-1 p-3 rounded-2xl bg-slate-50 border border-slate-100">
-                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Level</div>
-                                        <div className="font-black text-slate-800 text-xs truncate">
+                                    <div className="space-y-1 rounded-2xl border border-slate-100 bg-slate-50 p-3">
+                                        <div className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">
+                                            Access
+                                        </div>
+                                        <div className="truncate text-xs font-black text-slate-800">
+                                            {course.access_duration > 0
+                                                ? `${course.access_duration} days`
+                                                : 'Lifetime'}
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1 rounded-2xl border border-slate-100 bg-slate-50 p-3">
+                                        <div className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">
+                                            Level
+                                        </div>
+                                        <div className="truncate text-xs font-black text-slate-800">
                                             {course.difficulty_level}
                                         </div>
                                     </div>
                                 </div>
-                                
+
                                 {Object.keys(stats.lesson_types).length > 0 && (
                                     <div className="space-y-4 pt-2">
                                         <div className="flex items-center gap-2">
                                             <Separator className="flex-1 bg-slate-100" />
-                                            <span className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em]">Breakdown</span>
+                                            <span className="text-[9px] font-black tracking-[0.2em] text-slate-300 uppercase">
+                                                Breakdown
+                                            </span>
                                             <Separator className="flex-1 bg-slate-100" />
                                         </div>
                                         <div className="grid grid-cols-1 gap-2">
-                                            {Object.entries(stats.lesson_types).map(([type, count]) => (
-                                                <div key={type} className="flex justify-between items-center p-2.5 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100 group">
+                                            {Object.entries(
+                                                stats.lesson_types,
+                                            ).map(([type, count]) => (
+                                                <div
+                                                    key={type}
+                                                    className="group flex items-center justify-between rounded-xl border border-transparent p-2.5 transition-colors hover:border-slate-100 hover:bg-slate-50"
+                                                >
                                                     <div className="flex items-center gap-2">
-                                                        <div className={cn(
-                                                            "h-2 w-2 rounded-full",
-                                                            type === 'Video' ? 'bg-blue-400' :
-                                                            type === 'Quiz' ? 'bg-emerald-400' :
-                                                            type === 'Assignment' ? 'bg-purple-400' : 'bg-slate-300'
-                                                        )}></div>
-                                                        <span className="text-xs font-bold text-slate-600 group-hover:text-slate-900 transition-colors">{type}</span>
+                                                        <div
+                                                            className={cn(
+                                                                'h-2 w-2 rounded-full',
+                                                                type === 'Video'
+                                                                    ? 'bg-blue-400'
+                                                                    : type ===
+                                                                        'Quiz'
+                                                                      ? 'bg-emerald-400'
+                                                                      : type ===
+                                                                          'Assignment'
+                                                                        ? 'bg-purple-400'
+                                                                        : 'bg-slate-300',
+                                                            )}
+                                                        ></div>
+                                                        <span className="text-xs font-bold text-slate-600 transition-colors group-hover:text-slate-900">
+                                                            {type}
+                                                        </span>
                                                     </div>
-                                                    <span className="text-xs font-black text-slate-400 group-hover:text-indigo-600 transition-colors bg-slate-100 group-hover:bg-indigo-50 px-2 py-0.5 rounded-md">{count}</span>
+                                                    <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-black text-slate-400 transition-colors group-hover:bg-indigo-50 group-hover:text-indigo-600">
+                                                        {count}
+                                                    </span>
                                                 </div>
                                             ))}
                                         </div>
@@ -378,18 +568,24 @@ export default function Show({ course, enrollmentStatus, isWishlisted, stats, us
                         </Card>
 
                         {/* Instructor Info */}
-                        <Card className="border-none shadow-xl rounded-3xl overflow-hidden">
-                            <CardHeader className="bg-slate-50/50 border-b border-slate-100">
-                                <CardTitle className="text-sm font-black text-slate-800 uppercase tracking-widest">Instructor</CardTitle>
+                        <Card className="overflow-hidden rounded-3xl border-none shadow-xl">
+                            <CardHeader className="border-b border-slate-100 bg-slate-50/50">
+                                <CardTitle className="text-sm font-black tracking-widest text-slate-800 uppercase">
+                                    Instructor
+                                </CardTitle>
                             </CardHeader>
                             <CardContent className="p-6">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 font-black">
+                                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 font-black text-slate-500">
                                         {course.instructor.name.charAt(0)}
                                     </div>
                                     <div className="flex-1 overflow-hidden">
-                                        <p className="font-black text-slate-800 truncate">{course.instructor.name}</p>
-                                        <p className="text-xs font-bold text-slate-400 truncate">{course.instructor.email}</p>
+                                        <p className="truncate font-black text-slate-800">
+                                            {course.instructor.name}
+                                        </p>
+                                        <p className="truncate text-xs font-bold text-slate-400">
+                                            {course.instructor.email}
+                                        </p>
                                     </div>
                                 </div>
                             </CardContent>

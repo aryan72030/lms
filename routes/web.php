@@ -7,7 +7,7 @@ use App\Http\Controllers\Admin\CourseController as AdminCourseController;
 use App\Http\Controllers\Admin\LessonController as AdminLessonController;
 use App\Http\Controllers\Admin\EnrollmentController as AdminEnrollmentController;
 use App\Http\Controllers\Admin\QuizController as AdminQuizController;
-use App\Http\Controllers\Admin\AssignmentController as AdminAssignmentController;
+use App\Http\Controllers\Admin\CourseAssignmentController as AdminCourseAssignmentController;
 use App\Http\Controllers\Instructor\DashboardController as InstructorDashboardController;
 use App\Http\Controllers\Instructor\CourseController as InstructorCourseController;
 use App\Http\Controllers\Instructor\LessonController as InstructorLessonController;
@@ -17,7 +17,7 @@ use App\Http\Controllers\Student\DashboardController as StudentDashboardControll
 use App\Http\Controllers\Student\EnrollmentController as StudentEnrollmentController;
 use App\Http\Controllers\Student\CourseController as StudentCourseController;
 use App\Http\Controllers\Student\QuizController as StudentQuizController;
-use App\Http\Controllers\Student\AssignmentController as StudentAssignmentController;
+use App\Http\Controllers\Student\CourseAssignmentController as StudentCourseAssignmentController;
 use App\Http\Controllers\Student\WishlistController as StudentWishlistController;
 use App\Http\Controllers\Student\LessonProgressController;
 use App\Http\Controllers\CertificateController;
@@ -60,14 +60,19 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('admin')->name('admin.'
     Route::resource('courses', AdminCourseController::class)->only(['index', 'create', 'store', 'edit', 'update', 'destroy', 'show']);
     // Lesson Management within Course
     Route::resource('courses.lessons', AdminLessonController::class);
+    Route::patch('courses/{course}/lessons/reorder', [AdminLessonController::class, 'reorder'])->name('courses.lessons.reorder');
+    Route::patch('courses/{course}/lessons/{lesson}/move-up', [AdminLessonController::class, 'moveUp'])->name('courses.lessons.move-up');
+    Route::patch('courses/{course}/lessons/{lesson}/move-down', [AdminLessonController::class, 'moveDown'])->name('courses.lessons.move-down');
     Route::patch('courses/{course}/lessons/{lesson}/toggle-status', [AdminLessonController::class, 'toggleStatus'])->name('courses.lessons.toggle-status');
     
     // Course Sections
     Route::post('courses/{course}/sections', [AdminLessonController::class, 'storeSection'])->name('courses.sections.store');
     Route::put('courses/{course}/sections/{section}', [AdminLessonController::class, 'updateSection'])->name('courses.sections.update');
     Route::delete('courses/{course}/sections/{section}', [AdminLessonController::class, 'destroySection'])->name('courses.sections.destroy');
-    Route::get('lessons', [AdminLessonController::class, 'allLessons'])->name('lessons.index');
-    Route::get('lessons/create', [AdminLessonController::class, 'createStandalone'])->name('lessons.create');
+    // Lesson Management
+    Route::get('lessons', [AdminLessonController::class, 'allLessons'])->name('lessons.all');
+    Route::patch('lessons/{lesson}/toggle-publish', [AdminLessonController::class, 'togglePublish'])->name('lessons.toggle-publish');
+    Route::get('lessons/create', [AdminLessonController::class, 'createStandalone'])->name('lessons.create.standalone');
     Route::post('lessons', [AdminLessonController::class, 'storeStandalone'])->name('lessons.store');
     Route::get('lessons/{lesson}/edit', [AdminLessonController::class, 'editStandalone'])->name('lessons.edit');
     Route::put('lessons/{lesson}', [AdminLessonController::class, 'updateStandalone'])->name('lessons.update');
@@ -80,18 +85,34 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('admin')->name('admin.'
     
     // Quiz Management
     Route::resource('quizzes', AdminQuizController::class);
+    Route::post('quizzes/{quiz}/questions', [AdminQuizController::class, 'storeQuestion'])->name('quizzes.questions.store');
+    Route::put('quizzes/{quiz}/questions/{question}', [AdminQuizController::class, 'updateQuestion'])->name('quizzes.questions.update');
+    Route::delete('quizzes/{quiz}/questions/{question}', [AdminQuizController::class, 'destroyQuestion'])->name('quizzes.questions.destroy');
+    Route::post('quizzes/{quiz}/reorder-questions', [AdminQuizController::class, 'reorderQuestions'])->name('quizzes.reorder-questions');
     Route::patch('quizzes/{quiz}/toggle-status', [AdminQuizController::class, 'toggleStatus'])->name('quizzes.toggle-status');
     Route::get('quizzes/{quiz}/attempts', [AdminQuizController::class, 'attempts'])->name('quizzes.attempts');
     Route::get('quiz-attempts/{attempt}/details', [AdminQuizController::class, 'attemptDetails'])->name('quiz-attempts.details');
 
-    // Assignment Management
-    Route::get('assignments', [AdminAssignmentController::class, 'index'])->name('assignments.index');
-    Route::get('assignments/{lesson}', [AdminAssignmentController::class, 'show'])->name('assignments.show');
-    Route::post('submissions/{submission}/grade', [AdminAssignmentController::class, 'grade'])->name('assignments.grade');
+    // Course Assignment Management
+    Route::resource('assignments', AdminCourseAssignmentController::class);
+    Route::patch('assignments/{assignment}/toggle-publish', [AdminCourseAssignmentController::class, 'togglePublish'])->name('assignments.toggle-publish');
+    Route::post('assignments/{assignment}/submissions/{submission}/grade', [AdminCourseAssignmentController::class, 'grade'])->name('assignments.grade');
+    Route::post('assignments/{assignment}/submissions/{submission}/reject', [AdminCourseAssignmentController::class, 'reject'])->name('assignments.reject');
+    Route::get('assignments/{assignment}/submissions/{submission}', [AdminCourseAssignmentController::class, 'showSubmission'])->name('assignments.submissions.show');
+
+
+
+
     
     // Enrollment Management
+    Route::get('enrollments/{enrollment}/details', [AdminEnrollmentController::class, 'getDetails'])->name('enrollments.details');
+    Route::post('enrollments/{enrollment}/toggle-lesson', [AdminEnrollmentController::class, 'toggleLesson'])->name('enrollments.toggle-lesson');
+    Route::get('enrollments/{enrollment}/edit', [AdminEnrollmentController::class, 'edit'])->name('enrollments.edit');
+    Route::post('enrollments/{enrollment}/refund', [AdminEnrollmentController::class, 'refund'])->name('enrollments.refund');
+    Route::post('enrollments/{enrollment}/approve-refund', [AdminEnrollmentController::class, 'approveRefund'])->name('enrollments.approve-refund');
+    Route::post('enrollments/{enrollment}/reject-refund', [AdminEnrollmentController::class, 'rejectRefund'])->name('enrollments.reject-refund');
+    Route::post('enrollments/{enrollment}/cancel', [AdminEnrollmentController::class, 'cancel'])->name('enrollments.cancel');
     Route::resource('enrollments', AdminEnrollmentController::class);
-    Route::patch('enrollments/bulk-update', [AdminEnrollmentController::class, 'bulkUpdate'])->name('enrollments.bulk-update');
     
     // System Settings
     Route::get('settings', [App\Http\Controllers\Admin\SettingController::class, 'index'])->name('settings.index');
@@ -118,6 +139,7 @@ Route::middleware(['auth', 'verified', 'instructor'])->prefix('instructor')->nam
     // Enrollment Management
     Route::get('enrollments', [InstructorEnrollmentController::class, 'index'])->name('enrollments.index');
     Route::get('enrollments/{enrollment}', [InstructorEnrollmentController::class, 'show'])->name('enrollments.show');
+    Route::get('enrollments/{enrollment}/details', [InstructorEnrollmentController::class, 'getDetails'])->name('enrollments.details');
     
     // Quiz Management
     Route::resource('quizzes', InstructorQuizController::class);
@@ -140,11 +162,19 @@ Route::middleware(['auth', 'verified', 'instructor'])->prefix('instructor')->nam
     Route::get('lessons/{lesson}/edit', [InstructorLessonController::class, 'editStandalone'])->name('lessons.edit');
     Route::put('lessons/{lesson}', [InstructorLessonController::class, 'updateStandalone'])->name('lessons.update');
     Route::delete('lessons/{lesson}', [InstructorLessonController::class, 'destroyStandalone'])->name('lessons.destroy');
+    Route::patch('lessons/{lesson}/toggle-publish', [InstructorLessonController::class, 'togglePublish'])->name('lessons.toggle-publish');
 
-    // Assignment Management
-    Route::get('assignments', [App\Http\Controllers\Instructor\AssignmentController::class, 'index'])->name('assignments.index');
-    Route::get('assignments/{lesson}', [App\Http\Controllers\Instructor\AssignmentController::class, 'show'])->name('assignments.show');
-    Route::post('submissions/{submission}/grade', [App\Http\Controllers\Instructor\AssignmentController::class, 'grade'])->name('assignments.grade');
+ // Course Assignment Management
+        Route::get('assignments', [App\Http\Controllers\Instructor\CourseAssignmentController::class, 'indexAll'])->name('assignments.index');
+        Route::post('assignments', [App\Http\Controllers\Instructor\CourseAssignmentController::class, 'store'])->name('assignments.store');
+        Route::put('assignments/{assignment}', [App\Http\Controllers\Instructor\CourseAssignmentController::class, 'update'])->name('assignments.update');
+        Route::delete('assignments/{assignment}', [App\Http\Controllers\Instructor\CourseAssignmentController::class, 'destroy'])->name('assignments.destroy');
+        Route::get('assignments/{assignment}', [App\Http\Controllers\Instructor\CourseAssignmentController::class, 'show'])->name('assignments.show');
+        Route::patch('assignments/{assignment}/toggle-publish', [App\Http\Controllers\Instructor\CourseAssignmentController::class, 'togglePublish'])->name('assignments.toggle-publish');
+        Route::post('assignments/{assignment}/submissions/{submission}/grade', [App\Http\Controllers\Instructor\CourseAssignmentController::class, 'grade'])->name('assignments.grade');
+        Route::post('assignments/{assignment}/submissions/{submission}/reject', [App\Http\Controllers\Instructor\CourseAssignmentController::class, 'reject'])->name('assignments.reject');
+        Route::get('assignments/{assignment}/submissions/{submission}', [App\Http\Controllers\Instructor\CourseAssignmentController::class, 'showSubmission'])->name('assignments.submissions.show');
+        
 });
 
 // Student Routes - Enrolled Courses Only
@@ -157,29 +187,29 @@ Route::middleware(['auth', 'verified', 'student'])->prefix('student')->name('stu
     
     // Quiz Management
     Route::get('quizzes', [StudentQuizController::class, 'index'])->name('quizzes.index');
-    Route::get('quizzes/{quiz}/start', [StudentQuizController::class, 'start'])->name('quizzes.start');
+    Route::get('quizzes/{quiz}', [StudentQuizController::class, 'show'])->name('quizzes.show');
     Route::match(['get', 'post'], 'quizzes/{quiz}/attempt', [StudentQuizController::class, 'attempt'])->name('quizzes.attempt');
+    Route::get('quiz-attempts/{attempt}', [StudentQuizController::class, 'showAttempt'])->name('quiz-attempts.show');
+    Route::get('quizzes/{quiz}/attempts', [StudentQuizController::class, 'attempts'])->name('quizzes.attempts');
     Route::get('quizzes/{quiz}/results', [StudentQuizController::class, 'quizResults'])->name('quizzes.results');
-    Route::get('quiz-attempts/{attempt}/take', [StudentQuizController::class, 'take'])->name('quiz-attempts.take');
+    Route::get('quiz-attempts/{attempt}/results', [StudentQuizController::class, 'showResults'])->name('quiz-attempts.results');
     Route::patch('quiz-attempts/{attempt}/answer', [StudentQuizController::class, 'answer'])->name('quiz-attempts.answer');
     Route::post('quiz-attempts/{attempt}/submit', [StudentQuizController::class, 'submit'])->name('quiz-attempts.submit');
-    Route::get('quiz-attempts/{attempt}/results', [StudentQuizController::class, 'results'])->name('quiz-attempts.results');
 
-    // Legacy quiz lesson routes (backward compatibility)
-    Route::get('lessons/{lesson}/quiz', [StudentQuizController::class, 'legacyLessonQuiz'])->name('lessons.quiz.show');
-    Route::post('lessons/{lesson}/quiz/attempt', [StudentQuizController::class, 'legacyLessonAttempt'])->name('lessons.quiz.attempt');
-    
-    // Assignment Management
-    Route::get('lessons/{lesson}/assignment', [StudentAssignmentController::class, 'show'])->name('lessons.assignment.show');
-    Route::post('lessons/{lesson}/assignment/submit', [StudentAssignmentController::class, 'submit'])->name('lessons.assignment.submit');
-    Route::post('lessons/{lesson}/assignment/draft', [StudentAssignmentController::class, 'saveDraft'])->name('lessons.assignment.draft');
-    
+    // Course Assignment Management
+    Route::get('assignments', [App\Http\Controllers\Student\CourseAssignmentController::class, 'index'])->name('assignments.index');
+    Route::get('assignments/{assignment}', [App\Http\Controllers\Student\CourseAssignmentController::class, 'show'])->name('assignments.show');
+    Route::post('assignments/{assignment}/draft', [App\Http\Controllers\Student\CourseAssignmentController::class, 'saveDraft'])->name('assignments.draft');
+    Route::post('assignments/{assignment}/submit', [App\Http\Controllers\Student\CourseAssignmentController::class, 'submit'])->name('assignments.submit');
+    Route::post('assignments/{assignment}/reopen', [App\Http\Controllers\Student\CourseAssignmentController::class, 'reopenSubmission'])->name('assignments.reopen');
+
     // Enrollment Management
     Route::get('enrollments', [StudentEnrollmentController::class, 'index'])->name('enrollments.index');
     Route::post('enrollments', [StudentEnrollmentController::class, 'store'])->name('enrollments.store');
     Route::get('enrollments/{enrollment}', [StudentEnrollmentController::class, 'show'])->name('enrollments.show');
     Route::patch('enrollments/{enrollment}/progress', [StudentEnrollmentController::class, 'updateProgress'])->name('enrollments.update-progress');
-    Route::delete('enrollments/{enrollment}/cancel', [StudentEnrollmentController::class, 'cancel'])->name('enrollments.cancel');
+    Route::patch('enrollments/{enrollment}/cancel', [StudentEnrollmentController::class, 'cancel'])->name('enrollments.cancel');
+    Route::post('enrollments/{enrollment}/refund-request', [StudentEnrollmentController::class, 'requestRefund'])->name('enrollments.refund-request');
     Route::get('enrollment-statistics', [StudentEnrollmentController::class, 'statistics'])->name('enrollment-statistics');
     Route::post('check-enrollment', [StudentEnrollmentController::class, 'checkEnrollment'])->name('check-enrollment');
     Route::get('certificates', [StudentEnrollmentController::class, 'certificates'])->name('certificates.index');

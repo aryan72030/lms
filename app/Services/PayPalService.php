@@ -209,7 +209,10 @@ class PayPalService
             if ($response->successful()) {
                 $captureResult = $response->json();
                 
-                $payment = Payment::where('paypal_order_id', $orderId)->first();
+                // Eager load relationships to prevent missing data issues
+                $payment = Payment::with(['enrollment.course', 'student', 'course'])
+                    ->where('paypal_order_id', $orderId)
+                    ->first();
                 
                 if (!$payment) {
                     throw new Exception('Payment record not found for order ID: ' . $orderId);
@@ -225,12 +228,12 @@ class PayPalService
                         'paypal_response' => $captureResult
                     ]);
 
-                    // Update enrollment status
+                    // Update enrollment status using model method to ensure expiry_date is set
                     $enrollment = $payment->enrollment;
-                    $enrollment->update([
-                        'payment_status' => Enrollment::PAYMENT_STATUS_COMPLETED,
-                        'status' => Enrollment::STATUS_ACTIVE
-                    ]);
+                    $enrollment->markAsPaid(
+                        $captureResult['purchase_units'][0]['payments']['captures'][0]['id'] ?? 'N/A',
+                        (float) $payment->amount
+                    );
 
                     // Send payment confirmation and enrollment emails
                     $emailSettings = Setting::getEmailSettings();

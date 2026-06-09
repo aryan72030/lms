@@ -52,7 +52,11 @@ class CourseController extends Controller
                 'slug' => $course->slug,
                 'thumbnail' => $course->thumbnail ? '/files/' . $course->thumbnail : null,
                 'description' => $course->description,
+                'objectives' => $course->objectives,
+                'requirements' => $course->requirements,
+                'target_audience' => $course->target_audience,
                 'price' => $course->price,
+                'access_duration' => $course->access_duration,
                 'language' => $course->language,
                 'duration_hours' => $course->duration_hours,
                 'difficulty_level' => $course->difficulty_level,
@@ -88,9 +92,11 @@ class CourseController extends Controller
         $this->ensureInstructor($request);
 
         $categories = CourseCategory::active()->get(['id', 'name']);
+        $defaultDuration = 40;
 
         return Inertia::render('instructor/courses/create', [
             'categories' => $categories,
+            'defaultDuration' => $defaultDuration,
             'difficultyLevels' => [
                 Course::DIFFICULTY_BEGINNER,
                 Course::DIFFICULTY_INTERMEDIATE,
@@ -104,6 +110,10 @@ class CourseController extends Controller
         $this->ensureInstructor($request);
 
         $maxSize = Setting::get('max_file_upload_size', 2) * 1024; // KB
+        $requireDescription = Setting::get('require_course_description', true);
+        $requireThumbnail = Setting::get('require_course_thumbnail', true);
+        $allowFree = Setting::get('allow_free_courses', true);
+
         $validated = $request->validate([
             'title' => [
                 'required', 
@@ -111,13 +121,14 @@ class CourseController extends Controller
                 'max:255',
                 Rule::unique('courses', 'title')->where('instructor_id', $request->user()->id)
             ],
-            'description' => 'required|string|min:50',
+            'description' => ($requireDescription ? 'required|' : 'nullable|') . 'string' . ($requireDescription ? '|min:50' : ''),
             'objectives' => 'nullable|string',
             'requirements' => 'nullable|array',
             'target_audience' => 'nullable|array',
             'language' => 'required|string',
-            'thumbnail' => "nullable|image|max:{$maxSize}",
-            'price' => 'required|numeric|min:0|max:9999.99',
+            'thumbnail' => ($requireThumbnail ? 'required|' : 'nullable|') . "image|max:{$maxSize}",
+            'price' => ['required', 'numeric', 'max:9999.99', $allowFree ? 'min:0' : 'min:1'],
+            'access_duration' => 'nullable|integer|min:0|max:3650',
             'duration_hours' => 'required|integer|min:1|max:500',
             'difficulty_level' => ['required', Rule::in([
                 Course::DIFFICULTY_BEGINNER,
@@ -125,6 +136,8 @@ class CourseController extends Controller
                 Course::DIFFICULTY_ADVANCED,
             ])],
             'category_id' => 'required|exists:course_categories,id',
+        ], [
+            'price.min' => $allowFree ? 'Price must be at least 0.' : 'Free courses are not allowed. Price must be at least 1.',
         ]);
 
         if ($request->hasFile('thumbnail')) {
@@ -145,10 +158,7 @@ class CourseController extends Controller
         $this->ensureInstructor($request);
         $this->ensureOwnership($request, $course);
 
-        if (!$course->canBeEdited()) {
-            return redirect()->route('instructor.courses.index')
-                ->with('error', 'Archived courses cannot be edited.');
-        }
+
 
         $course->load(['category']);
         $categories = CourseCategory::active()->get(['id', 'name']);
@@ -164,6 +174,7 @@ class CourseController extends Controller
                 'thumbnail' => $course->thumbnail ? '/files/' . $course->thumbnail : null,
                 'language' => $course->language,
                 'price' => $course->price,
+                'access_duration' => $course->access_duration,
                 'duration_hours' => $course->duration_hours,
                 'difficulty_level' => $course->difficulty_level,
                 'category_id' => $course->category_id,
@@ -184,21 +195,23 @@ class CourseController extends Controller
         $this->ensureInstructor($request);
         $this->ensureOwnership($request, $course);
 
-        if (!$course->canBeEdited()) {
-            return redirect()->route('instructor.courses.index')
-                ->with('error', 'Archived courses cannot be edited.');
-        }
+
 
         $maxSize = Setting::get('max_file_upload_size', 2) * 1024; // KB
+        $requireDescription = Setting::get('require_course_description', true);
+        $requireThumbnail = Setting::get('require_course_thumbnail', true);
+        $allowFree = Setting::get('allow_free_courses', true);
+
         $validated = $request->validate([
             'title' => 'required|string|max:255',
-            'description' => 'required|string',
+            'description' => ($requireDescription ? 'required|' : 'nullable|') . 'string' . ($requireDescription ? '|min:50' : ''),
             'objectives' => 'nullable|string',
             'requirements' => 'nullable|array',
             'target_audience' => 'nullable|array',
             'language' => 'required|string',
             'thumbnail' => "nullable|image|max:{$maxSize}",
-            'price' => 'required|numeric|min:0',
+            'price' => ['required', 'numeric', 'max:9999.99', $allowFree ? 'min:0' : 'min:1'],
+            'access_duration' => 'nullable|integer|min:0|max:3650',
             'duration_hours' => 'required|integer|min:1',
             'difficulty_level' => ['required', Rule::in([
                 Course::DIFFICULTY_BEGINNER,
@@ -206,7 +219,13 @@ class CourseController extends Controller
                 Course::DIFFICULTY_ADVANCED,
             ])],
             'category_id' => 'required|exists:course_categories,id',
+        ], [
+            'price.min' => $allowFree ? 'Price must be at least 0.' : 'Free courses are not allowed. Price must be at least 1.',
         ]);
+
+        if ($requireThumbnail && !$course->thumbnail && !$request->hasFile('thumbnail')) {
+            return back()->withErrors(['thumbnail' => 'A course thumbnail is required.'])->withInput();
+        }
 
         if ($request->hasFile('thumbnail')) {
             // Delete old thumbnail if exists
@@ -234,8 +253,7 @@ class CourseController extends Controller
                 $errors[] = 'Course cannot be submitted for review in its current status.';
             }
             if (!$course->hasMinimumContent()) {
-                $minLessons = Setting::get('min_lessons_per_course', 1);
-                $errors[] = "Course must have at least {$minLessons} lesson(s) before submission.";
+                $errors[] = "Course must have at least 1 lesson(s) before submission.";
             }
             if (!$course->hasPublishedLessons()) {
                 $errors[] = 'Course must have at least one published lesson before submission.';

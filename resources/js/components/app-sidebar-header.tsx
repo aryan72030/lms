@@ -27,21 +27,21 @@ export function AppSidebarHeader({
             <div className="flex w-full items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                     <SidebarTrigger className="-ml-1" />
-                    
+
                     {/* Branding shown on mobile or when sidebar is collapsed/icon-only */}
                     {(isMobile || state === 'collapsed') && (
-                        <Link href="/" className="flex items-center gap-2 mr-2">
+                        <Link href="/" className="mr-2 flex items-center gap-2">
                             <div className="flex aspect-square size-8 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
                                 <AppLogoIcon className="size-5 fill-current text-white dark:text-black" />
                             </div>
-                            <span className="truncate font-semibold hidden sm:inline-block text-sm">
+                            <span className="hidden truncate text-sm font-semibold sm:inline-block">
                                 {siteName}
                             </span>
                         </Link>
                     )}
 
-                    <div className="hidden h-4 w-px bg-sidebar-border/50 sm:block mx-1" />
-                    
+                    <div className="mx-1 hidden h-4 w-px bg-sidebar-border/50 sm:block" />
+
                     <Breadcrumbs breadcrumbs={breadcrumbs} />
                 </div>
 

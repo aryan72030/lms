@@ -1,51 +1,75 @@
-import { Head, Link } from '@inertiajs/react';
-import React from 'react';
-import AdminLessonForm from '@/components/admin/admin-lesson-form';
-import { Button } from '@/components/ui/button';
+import { Head, router, usePage } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
+import { Link } from '@inertiajs/react';
+import { ArrowLeft } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import LessonForm from '@/components/lessons/LessonForm';
+import React, { useEffect, useState } from 'react';
+import { useNotification } from '@/contexts/notification-context';
 
 interface Course {
     id: number;
     title: string;
     status: string;
-    status_label: string;
 }
 
 interface Props {
     course: Course;
-    sections: Array<{ id: number; title: string }>;
     lessonTypes: string[];
+    quizzes: Array<{ id: number; title: string }>;
+    sections: Array<{ id: number; title: string }>;
 }
 
-export default function AdminLessonCreate({ course, sections, lessonTypes }: Props) {
-    return (
-        <AppLayout breadcrumbs={[
-            { title: 'Dashboard', href: '/admin/dashboard' },
-            { title: 'Course Management', href: '/admin/courses' },
-            { title: course.title, href: `/admin/courses/${course.id}/lessons` },
-            { title: 'Create Lesson', href: `/admin/courses/${course.id}/lessons/create` }
-        ]}>
-            <Head title="Create New Lesson" />
-            
-            <div className="space-y-6">
-                {/* Header */}
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h1 className="text-3xl font-bold text-gray-900">Create New Lesson</h1>
-                        <p className="text-gray-600">
-                            Adding a new lesson to "{course.title}"
-                        </p>
-                    </div>
-                </div>
+export default function AdminLessonCreate({
+    course,
+    lessonTypes,
+    quizzes,
+    sections,
+}: Props) {
+    const [processing, setProcessing] = useState(false);
+    const [errors, setErrors] = useState({});
+    const { showError } = useNotification();
+    const { props: { flash } } = usePage<any>();
 
-                <AdminLessonForm 
-                    mode="create"
-                    course={course}
-                    sections={sections}
-                    lessonTypes={lessonTypes}
-                    action={`/admin/courses/${course.id}/lessons`}
-                />
-            </div>
+    const handleSubmit = (data: any) => {
+        setProcessing(true);
+        router.post(`/admin/courses/${course.id}/lessons`, data, {
+            onError: (err) => {
+                setErrors(err);
+            },
+            onFinish: () => setProcessing(false),
+        });
+    };
+
+    return (
+        <AppLayout
+            breadcrumbs={[
+                { title: 'Dashboard', href: '/admin/dashboard' },
+                { title: 'Course Management', href: '/admin/courses' },
+                {
+                    title: course.title,
+                    href: `/admin/courses/${course.id}/lessons`,
+                },
+                {
+                    title: 'Create Lesson',
+                    href: `/admin/courses/${course.id}/lessons/create`,
+                },
+            ]}
+        >
+            <Head title="Create New Lesson" />
+
+
+
+            <LessonForm
+                course={course}
+                lessonTypes={lessonTypes}
+                quizzes={quizzes}
+                sections={sections}
+                onSubmit={handleSubmit}
+                processing={processing}
+                errors={errors}
+                cancelUrl={`/admin/courses/${course.id}/lessons`}
+            />
         </AppLayout>
     );
 }

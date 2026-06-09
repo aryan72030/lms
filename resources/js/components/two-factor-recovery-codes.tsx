@@ -48,7 +48,7 @@ export default function TwoFactorRecoveryCodes({
         if (!recoveryCodesList.length) {
             fetchRecoveryCodes();
         }
-    }, [recoveryCodesList.length, fetchRecoveryCodes]);
+    }, []);
 
     const RecoveryCodeIconComponent = codesAreVisible ? EyeOff : Eye;
 

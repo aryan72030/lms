@@ -23,7 +23,7 @@ class QuizController extends Controller
     {
         $this->ensureAdmin($request);
 
-        $query = Quiz::with(['course', 'course.instructor']);
+        $query = Quiz::with(['course', 'course.instructor'])->whereHas('course');
 
         // Search functionality
         if ($request->filled('search')) {
@@ -61,14 +61,14 @@ class QuizController extends Controller
                 'title' => $quiz->title,
                 'description' => $quiz->description,
                 'course_id' => $quiz->course_id,
-                'course' => [
+                'course' => $quiz->course ? [
                     'id' => $quiz->course->id,
                     'title' => $quiz->course->title,
-                    'instructor' => [
+                    'instructor' => $quiz->course->instructor ? [
                         'id' => $quiz->course->instructor->id,
                         'name' => $quiz->course->instructor->name,
-                    ],
-                ],
+                    ] : null,
+                ] : null,
                 'time_limit' => $quiz->time_limit,
                 'total_marks' => $quiz->total_marks,
                 'passing_score' => $quiz->passing_score,
@@ -93,6 +93,7 @@ class QuizController extends Controller
 
         return Inertia::render('admin/quizzes/index', [
             'quizzes' => $quizzes,
+            'quizzes_total' => $quizzes->total(),
             'courses' => $courses,
             'filters' => $request->only(['search', 'course_id', 'status']),
         ]);
@@ -109,7 +110,6 @@ class QuizController extends Controller
     {
         $this->ensureAdmin($request);
 
-        $maxAttemptsSetting = (int) Setting::get('max_quiz_attempts', 10);
         $minPassingScoreSetting = (int) Setting::get('min_quiz_passing_score', 0);
 
         $validated = $request->validate([
@@ -118,13 +118,14 @@ class QuizController extends Controller
             'course_id' => 'required|exists:courses,id',
             'time_limit' => 'nullable|integer|min:1',
             'passing_score' => "required|numeric|min:{$minPassingScoreSetting}|max:100",
-            'max_attempts' => "required|integer|min:1|max:{$maxAttemptsSetting}",
+            'max_attempts' => 'required|integer|min:1',
             'is_final_quiz' => 'boolean',
             'is_active' => 'boolean',
+            'redirect_to' => 'nullable|string',
         ]);
 
         try {
-            $quiz = Quiz::create($validated);
+            $quiz = Quiz::create(collect($validated)->except('redirect_to')->toArray());
 
             if ($request->expectsJson()) {
                 return response()->json([
@@ -135,6 +136,11 @@ class QuizController extends Controller
                         'title' => $quiz->title,
                     ]
                 ]);
+            }
+
+            if ($request->filled('redirect_to')) {
+                return redirect($request->get('redirect_to'))
+                    ->with('success', "Quiz '{$quiz->title}' created successfully.");
             }
 
             return redirect()->route('admin.quizzes.index')
@@ -170,14 +176,14 @@ class QuizController extends Controller
                 'id' => $quiz->id,
                 'title' => $quiz->title,
                 'description' => $quiz->description,
-                'course' => [
+                'course' => $quiz->course ? [
                     'id' => $quiz->course->id,
                     'title' => $quiz->course->title,
-                    'instructor' => [
+                    'instructor' => $quiz->course->instructor ? [
                         'id' => $quiz->course->instructor->id,
                         'name' => $quiz->course->instructor->name,
-                    ],
-                ],
+                    ] : null,
+                ] : null,
                 'time_limit' => $quiz->time_limit,
                 'total_marks' => $quiz->total_marks,
                 'passing_score' => $quiz->passing_score,
@@ -198,6 +204,7 @@ class QuizController extends Controller
                 'updated_at' => $quiz->updated_at->format('M d, Y H:i'),
             ],
             'statistics' => $statistics,
+            'questionTypes' => QuizQuestion::getTypeLabels(),
         ]);
     }
 
@@ -212,7 +219,6 @@ class QuizController extends Controller
     {
         $this->ensureAdmin($request);
 
-        $maxAttemptsSetting = (int) Setting::get('max_quiz_attempts', 10);
         $minPassingScoreSetting = (int) Setting::get('min_quiz_passing_score', 0);
 
         $validated = $request->validate([
@@ -220,13 +226,14 @@ class QuizController extends Controller
             'description' => 'nullable|string',
             'time_limit' => 'nullable|integer|min:1',
             'passing_score' => "required|numeric|min:{$minPassingScoreSetting}|max:100",
-            'max_attempts' => "required|integer|min:1|max:{$maxAttemptsSetting}",
+            'max_attempts' => 'required|integer|min:1',
             'is_final_quiz' => 'boolean',
             'is_active' => 'boolean',
+            'redirect_to' => 'nullable|string',
         ]);
 
         try {
-            $quiz->update($validated);
+            $quiz->update(collect($validated)->except('redirect_to')->toArray());
 
             if ($request->expectsJson()) {
                 return response()->json([
@@ -237,6 +244,11 @@ class QuizController extends Controller
                         'title' => $quiz->title,
                     ]
                 ]);
+            }
+
+            if ($request->filled('redirect_to')) {
+                return redirect($request->get('redirect_to'))
+                    ->with('success', "Quiz '{$quiz->title}' updated successfully.");
             }
 
             return redirect()->route('admin.quizzes.index')
@@ -269,7 +281,7 @@ class QuizController extends Controller
                         'message' => $message
                     ], 422);
                 }
-                return redirect()->route('admin.quizzes.index')
+                return redirect()->back()
                     ->with('error', $message);
             }
 
@@ -283,7 +295,7 @@ class QuizController extends Controller
                 ]);
             }
 
-            return redirect()->route('admin.quizzes.index')
+            return redirect()->back()
                 ->with('success', "Quiz '{$quizTitle}' deleted successfully.");
         } catch (\Exception $e) {
             if ($request->expectsJson()) {
@@ -292,7 +304,7 @@ class QuizController extends Controller
                     'message' => 'Failed to delete quiz. Please try again.'
                 ], 500);
             }
-            return redirect()->route('admin.quizzes.index')
+            return redirect()->back()
                 ->with('error', 'Failed to delete quiz. Please try again.');
         }
     }
@@ -324,7 +336,7 @@ class QuizController extends Controller
         $this->ensureAdmin($request);
 
         $query = QuizAttempt::with(['student', 'enrollment'])
-            ->where('lesson_id', $quiz->id);
+            ->where('quiz_id', $quiz->id);
 
         // Filter by status
         if ($request->filled('status')) {
@@ -402,5 +414,190 @@ class QuizController extends Controller
             ],
             'results' => $results,
         ]);
+    }
+
+    // Question Management
+    public function storeQuestion(Request $request, Quiz $quiz): RedirectResponse|JsonResponse
+    {
+        $this->ensureAdmin($request);
+
+        $validated = $request->validate([
+            'question_text' => 'required|string',
+            'question_type' => 'required|in:multiple_choice,true_false,short_answer',
+            'options' => 'required_if:question_type,multiple_choice|array',
+            'options.*' => 'required_with:options|string',
+            'correct_answer' => [
+                'required',
+                'string',
+                function ($attribute, $value, $fail) use ($request) {
+                    if ($request->input('question_type') === 'multiple_choice') {
+                        $optionsCount = is_array($request->input('options')) ? count($request->input('options')) : 0;
+                        $validKeys = [];
+                        for ($i = 0; $i < $optionsCount; $i++) {
+                            $validKeys[] = chr(65 + $i);
+                        }
+                        if (!in_array($value, $validKeys)) {
+                            $fail("The correct answer must correspond to one of the provided options.");
+                        }
+                    }
+                },
+            ],
+            'explanation' => 'nullable|string',
+            'points' => 'required|integer|min:1',
+        ]);
+
+        try {
+            QuizQuestion::create([
+                ...$validated,
+                'quiz_id' => $quiz->id,
+                'is_active' => true,
+            ]);
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Question added successfully.'
+                ]);
+            }
+
+            return redirect()->back()->with('success', 'Question added successfully.');
+        } catch (\Exception $e) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to add question. Please try again.'
+                ], 500);
+            }
+            return redirect()->back()->with('error', 'Failed to add question. Please try again.');
+        }
+    }
+
+    public function updateQuestion(Request $request, Quiz $quiz, QuizQuestion $question): RedirectResponse|JsonResponse
+    {
+        $this->ensureAdmin($request);
+
+        if ($question->quiz_id !== $quiz->id) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Question does not belong to this quiz.'
+                ], 403);
+            }
+            return redirect()->back()->with('error', 'Question does not belong to this quiz.');
+        }
+
+        $validated = $request->validate([
+            'question_text' => 'required|string',
+            'question_type' => 'required|in:multiple_choice,true_false,short_answer',
+            'options' => 'required_if:question_type,multiple_choice|array',
+            'options.*' => 'required_with:options|string',
+            'correct_answer' => [
+                'required',
+                'string',
+                function ($attribute, $value, $fail) use ($request) {
+                    if ($request->input('question_type') === 'multiple_choice') {
+                        $optionsCount = is_array($request->input('options')) ? count($request->input('options')) : 0;
+                        $validKeys = [];
+                        for ($i = 0; $i < $optionsCount; $i++) {
+                            $validKeys[] = chr(65 + $i);
+                        }
+                        if (!in_array($value, $validKeys)) {
+                            $fail("The correct answer must correspond to one of the provided options.");
+                        }
+                    }
+                },
+            ],
+            'explanation' => 'nullable|string',
+            'points' => 'required|integer|min:1',
+            'is_active' => 'boolean',
+        ]);
+
+        try {
+            $question->update($validated);
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Question updated successfully.'
+                ]);
+            }
+
+            return redirect()->back()->with('success', 'Question updated successfully.');
+        } catch (\Exception $e) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to update question. Please try again.'
+                ], 500);
+            }
+            return redirect()->back()->with('error', 'Failed to update question. Please try again.');
+        }
+    }
+
+    public function destroyQuestion(Request $request, Quiz $quiz, QuizQuestion $question): RedirectResponse|JsonResponse
+    {
+        $this->ensureAdmin($request);
+
+        if ($question->quiz_id !== $quiz->id) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Question does not belong to this quiz.'
+                ], 403);
+            }
+            return redirect()->back()->with('error', 'Question does not belong to this quiz.');
+        }
+
+        try {
+            $question->delete();
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Question deleted successfully.'
+                ]);
+            }
+
+            return redirect()->back()->with('success', 'Question deleted successfully.');
+        } catch (\Exception $e) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to delete question. Please try again.'
+                ], 500);
+            }
+            return redirect()->back()->with('error', 'Failed to delete question. Please try again.');
+        }
+    }
+
+    public function reorderQuestions(Request $request, Quiz $quiz): RedirectResponse|JsonResponse
+    {
+        $this->ensureAdmin($request);
+
+        $validated = $request->validate([
+            'question_ids' => 'required|array',
+            'question_ids.*' => 'required|integer|exists:quiz_questions,id',
+        ]);
+
+        try {
+            QuizQuestion::reorderQuestions($quiz->id, $validated['question_ids']);
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Questions reordered successfully.'
+                ]);
+            }
+
+            return redirect()->back()->with('success', 'Questions reordered successfully.');
+        } catch (\Exception $e) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to reorder questions. Please try again.'
+                ], 500);
+            }
+            return redirect()->back()->with('error', 'Failed to reorder questions. Please try again.');
+        }
     }
 }

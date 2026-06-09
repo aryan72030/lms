@@ -15,12 +15,13 @@ export default function AppSidebarLayout({
     return (
         <AppShell variant="sidebar">
             <AppSidebar />
-            <AppContent variant="sidebar" className="overflow-x-hidden flex flex-col min-h-screen">
+            <AppContent
+                variant="sidebar"
+                className="flex min-h-screen flex-col overflow-x-hidden"
+            >
                 <AppSidebarHeader breadcrumbs={breadcrumbs} />
-                <div className="px-6 py-6 md:px-4 flex-1">
-                    {children}
-                </div>
-                <footer className="px-6 py-4 text-xs text-muted-foreground md:px-4 border-t border-gray-50">
+                <div className="flex-1 px-6 py-6 md:px-4">{children}</div>
+                <footer className="border-t border-gray-50 px-6 py-4 text-xs text-muted-foreground md:px-4">
                     {footerText}
                 </footer>
             </AppContent>

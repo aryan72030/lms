@@ -17,7 +17,9 @@ interface NotificationContextType {
     showInfo: (message: string, title?: string) => void;
 }
 
-const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
+const NotificationContext = createContext<NotificationContextType | undefined>(
+    undefined,
+);
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
     const [notifications, setNotifications] = useState<NotificationData[]>([]);
@@ -25,8 +27,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     const showNotification = (notification: Omit<NotificationData, 'id'>) => {
         const id = Math.random().toString(36).substr(2, 9);
         const newNotification = { ...notification, id };
-        
-        setNotifications(prev => [...prev, newNotification]);
+
+        setNotifications((prev) => [...prev, newNotification]);
     };
 
     const showSuccess = (message: string, title?: string) => {
@@ -42,11 +44,15 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     };
 
     const removeNotification = (id: string) => {
-        setNotifications(prev => prev.filter(notification => notification.id !== id));
+        setNotifications((prev) =>
+            prev.filter((notification) => notification.id !== id),
+        );
     };
 
     return (
-        <NotificationContext.Provider value={{ showNotification, showSuccess, showError, showInfo }}>
+        <NotificationContext.Provider
+            value={{ showNotification, showSuccess, showError, showInfo }}
+        >
             {children}
             <div className="fixed top-4 right-4 z-50 space-y-2">
                 {notifications.map((notification) => (
@@ -68,7 +74,9 @@ export function useNotification() {
     const context = useContext(NotificationContext);
 
     if (context === undefined) {
-        throw new Error('useNotification must be used within a NotificationProvider');
+        throw new Error(
+            'useNotification must be used within a NotificationProvider',
+        );
     }
 
     return context;

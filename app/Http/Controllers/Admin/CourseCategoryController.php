@@ -8,6 +8,7 @@ use App\Models\Course;
 use App\Models\CourseCategory;
 use App\Models\Setting;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -63,15 +64,38 @@ class CourseCategoryController extends Controller
     /**
      * Store a newly created category
      */
-    public function store(Request $request): JsonResponse
+    public function store(Request $request): JsonResponse|RedirectResponse
     {
         $this->ensureAdmin($request);
 
-        $validator = Validator::make($request->all(), [
+        $rules = [
             'name' => ['required', 'string', 'max:255', 'unique:course_categories,name'],
             'description' => ['nullable', 'string', 'max:1000'],
             'status' => ['boolean'],
-        ]);
+        ];
+
+        if (! $request->expectsJson()) {
+            $validated = $request->validate($rules);
+
+            try {
+                $category = CourseCategory::create([
+                    'name' => $validated['name'],
+                    'description' => $validated['description'] ?? null,
+                    'status' => $validated['status'] ?? true,
+                ]);
+
+                return redirect()
+                    ->route('admin.course-categories.index')
+                    ->with('success', "Category '{$category->name}' created successfully.");
+            } catch (\Exception $e) {
+                return redirect()
+                    ->back()
+                    ->withInput()
+                    ->with('error', 'Failed to create category. Please try again.');
+            }
+        }
+
+        $validator = Validator::make($request->all(), $rules);
 
         if ($validator->fails()) {
             return response()->json([
@@ -114,15 +138,38 @@ class CourseCategoryController extends Controller
     /**
      * Update the specified category
      */
-    public function update(Request $request, CourseCategory $courseCategory): JsonResponse
+    public function update(Request $request, CourseCategory $courseCategory): JsonResponse|RedirectResponse
     {
         $this->ensureAdmin($request);
 
-        $validator = Validator::make($request->all(), [
+        $rules = [
             'name' => ['required', 'string', 'max:255', Rule::unique('course_categories')->ignore($courseCategory->id)],
             'description' => ['nullable', 'string', 'max:1000'],
             'status' => ['boolean'],
-        ]);
+        ];
+
+        if (! $request->expectsJson()) {
+            $validated = $request->validate($rules);
+
+            try {
+                $courseCategory->update([
+                    'name' => $validated['name'],
+                    'description' => $validated['description'] ?? null,
+                    'status' => $validated['status'] ?? $courseCategory->status,
+                ]);
+
+                return redirect()
+                    ->route('admin.course-categories.index')
+                    ->with('success', "Category '{$courseCategory->name}' updated successfully.");
+            } catch (\Exception $e) {
+                return redirect()
+                    ->back()
+                    ->withInput()
+                    ->with('error', 'Failed to update category. Please try again.');
+            }
+        }
+
+        $validator = Validator::make($request->all(), $rules);
 
         if ($validator->fails()) {
             return response()->json([
@@ -165,7 +212,7 @@ class CourseCategoryController extends Controller
     /**
      * Remove the specified category
      */
-    public function destroy(Request $request, CourseCategory $courseCategory): JsonResponse
+    public function destroy(Request $request, CourseCategory $courseCategory): JsonResponse|RedirectResponse
     {
         $this->ensureAdmin($request);
 
@@ -175,6 +222,12 @@ class CourseCategoryController extends Controller
                 ->count();
 
             if ($activeCoursesCount > 0) {
+                if (! $request->expectsJson()) {
+                    return redirect()
+                        ->route('admin.course-categories.index')
+                        ->with('error', "Cannot delete category '{$courseCategory->name}' because it still has {$activeCoursesCount} active course(s). Archive or move those courses first.");
+                }
+
                 return response()->json([
                     'success' => false,
                     'message' => "Cannot delete category '{$courseCategory->name}' because it still has {$activeCoursesCount} active course(s). Archive or move those courses first.",
@@ -184,11 +237,23 @@ class CourseCategoryController extends Controller
             $categoryName = $courseCategory->name;
             $courseCategory->delete();
 
+            if (! $request->expectsJson()) {
+                return redirect()
+                    ->route('admin.course-categories.index')
+                    ->with('success', "Category '{$categoryName}' deleted successfully.");
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => "Category '{$categoryName}' deleted successfully.",
             ]);
         } catch (\Exception $e) {
+            if (! $request->expectsJson()) {
+                return redirect()
+                    ->route('admin.course-categories.index')
+                    ->with('error', 'Failed to delete category. Please try again.');
+            }
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to delete category. Please try again.',
@@ -199,16 +264,36 @@ class CourseCategoryController extends Controller
     /**
      * Toggle category status
      */
-    public function toggleStatus(Request $request, CourseCategory $courseCategory): JsonResponse
+    public function toggleStatus(Request $request, CourseCategory $courseCategory): JsonResponse|RedirectResponse
     {
         $this->ensureAdmin($request);
 
         try {
+            // If trying to deactivate and category has active courses
+            if ($courseCategory->status && $courseCategory->courses()->count() > 0) {
+                if (! $request->expectsJson()) {
+                    return redirect()
+                        ->back()
+                        ->with('error', "Category '{$courseCategory->name}' cannot be deactivated because it has active courses. Please unassign or archive courses first.");
+                }
+
+                return response()->json([
+                    'success' => false,
+                    'message' => "Category '{$courseCategory->name}' cannot be deactivated because it has active courses. Please unassign or archive courses first.",
+                ], 422);
+            }
+
             $courseCategory->update([
-                'status' => !$courseCategory->status,
+                'status' => ! $courseCategory->status,
             ]);
 
             $statusText = $courseCategory->status ? 'activated' : 'deactivated';
+
+            if (! $request->expectsJson()) {
+                return redirect()
+                    ->route('admin.course-categories.index')
+                    ->with('success', "Category '{$courseCategory->name}' {$statusText} successfully.");
+            }
 
             return response()->json([
                 'success' => true,
@@ -226,6 +311,12 @@ class CourseCategoryController extends Controller
                 ],
             ]);
         } catch (\Exception $e) {
+            if (! $request->expectsJson()) {
+                return redirect()
+                    ->back()
+                    ->with('error', 'Failed to toggle category status. Please try again.');
+            }
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to toggle category status. Please try again.',

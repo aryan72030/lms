@@ -23,17 +23,23 @@ export default function Index({ settings, timezones }: Props) {
     const [activeTab, setActiveTab] = useState('general');
 
     return (
-        <AppLayout breadcrumbs={[
-            { title: 'Dashboard', href: '/admin/dashboard' },
-            { title: 'System Settings', href: '/admin/settings' }
-        ]}>
+        <AppLayout
+            breadcrumbs={[
+                { title: 'Dashboard', href: '/admin/dashboard' },
+                { title: 'System Settings', href: '/admin/settings' },
+            ]}
+        >
             <Head title="System Settings" />
 
             <div className="space-y-6">
-                <div className="flex justify-between items-center">
+                <div className="flex items-center justify-between">
                     <div>
-                        <h1 className="text-3xl font-bold tracking-tight">System Settings</h1>
-                        <p className="text-muted-foreground">Manage your LMS system configuration</p>
+                        <h1 className="page-title">
+                            System Settings
+                        </h1>
+                        <p className="text-muted-foreground">
+                            Manage your LMS system configuration
+                        </p>
                     </div>
                 </div>
 
@@ -45,28 +51,47 @@ export default function Index({ settings, timezones }: Props) {
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+                        <Tabs
+                            value={activeTab}
+                            onValueChange={setActiveTab}
+                            className="space-y-6"
+                        >
                             <TabsList className="grid w-full grid-cols-4">
-                                <TabsTrigger value="general" className="flex items-center gap-2">
+                                <TabsTrigger
+                                    value="general"
+                                    className="flex items-center gap-2"
+                                >
                                     <Globe className="h-4 w-4" />
                                     General
                                 </TabsTrigger>
-                                <TabsTrigger value="payment" className="flex items-center gap-2">
+                                <TabsTrigger
+                                    value="payment"
+                                    className="flex items-center gap-2"
+                                >
                                     <CreditCard className="h-4 w-4" />
                                     Payment
                                 </TabsTrigger>
-                                <TabsTrigger value="course" className="flex items-center gap-2">
+                                <TabsTrigger
+                                    value="course"
+                                    className="flex items-center gap-2"
+                                >
                                     <BookOpen className="h-4 w-4" />
                                     Course
                                 </TabsTrigger>
-                                <TabsTrigger value="notification" className="flex items-center gap-2">
+                                <TabsTrigger
+                                    value="notification"
+                                    className="flex items-center gap-2"
+                                >
                                     <Bell className="h-4 w-4" />
                                     Notification
                                 </TabsTrigger>
                             </TabsList>
 
                             <TabsContent value="general" className="space-y-6">
-                                <GeneralSettings settings={settings.general} timezones={timezones} />
+                                <GeneralSettings
+                                    settings={settings.general}
+                                    timezones={timezones}
+                                />
                             </TabsContent>
 
                             <TabsContent value="payment" className="space-y-6">
@@ -77,8 +102,13 @@ export default function Index({ settings, timezones }: Props) {
                                 <CourseSettings settings={settings.course} />
                             </TabsContent>
 
-                            <TabsContent value="notification" className="space-y-6">
-                                <NotificationSettings settings={settings.notification} />
+                            <TabsContent
+                                value="notification"
+                                className="space-y-6"
+                            >
+                                <NotificationSettings
+                                    settings={settings.notification}
+                                />
                             </TabsContent>
                         </Tabs>
                     </CardContent>

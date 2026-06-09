@@ -54,6 +54,8 @@ class CourseController extends Controller
 
         $courses->getCollection()->transform(function ($course) {
             $course->thumbnail = $course->thumbnail ? '/files/' . $course->thumbnail : null;
+            $course->average_rating = round($course->averageRating(), 1);
+            $course->reviews_count = $course->reviewsCount();
             return $course;
         });
 
@@ -72,7 +74,13 @@ class CourseController extends Controller
                 ->toArray();
 
             $courses->getCollection()->transform(function ($course) use ($enrollmentStatuses) {
-                $course->enrollment_status = $enrollmentStatuses->get($course->id);
+                $enrollment = $enrollmentStatuses->get($course->id);
+                if ($enrollment && $enrollment->expiry_date) {
+                    $enrollment->formatted_expiry_date = $enrollment->expiry_date->format('M d, Y');
+                    $enrollment->days_left = max(0, (int) now()->diffInDays($enrollment->expiry_date, false));
+                    $enrollment->is_expired = $enrollment->isExpired();
+                }
+                $course->enrollment_status = $enrollment;
                 return $course;
             });
         }
@@ -126,6 +134,13 @@ class CourseController extends Controller
                 ->exists();
         }
 
+        // Add formatted expiry date if enrollment exists
+        if ($enrollmentStatus && $enrollmentStatus->expiry_date) {
+            $enrollmentStatus->formatted_expiry_date = $enrollmentStatus->expiry_date->format('M d, Y');
+            $enrollmentStatus->days_left = max(0, (int) now()->diffInDays($enrollmentStatus->expiry_date, false));
+            $enrollmentStatus->is_expired = $enrollmentStatus->isExpired();
+        }
+
         // Get course statistics
         $stats = [
             'total_lessons' => $course->lessons->count(),
@@ -141,6 +156,7 @@ class CourseController extends Controller
                 'description' => $course->description,
                 'objectives' => $course->objectives,
                 'price' => $course->price,
+                'access_duration' => $course->access_duration,
                 'duration_hours' => $course->duration_hours,
                 'difficulty_level' => $course->difficulty_level,
                 'thumbnail' => $course->thumbnail ? '/files/' . $course->thumbnail : null,

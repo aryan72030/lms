@@ -10,3 +10,4 @@ declare module '@inertiajs/core' {
         };
     }
 }
+declare function route(name: string, params?: object): string;

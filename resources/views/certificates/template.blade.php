@@ -1,7 +1,12 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Certificate of Completion</title>
     <style>
         @page {
-            /* Non-zero page margin prevents PDF viewers/printers from clipping edges */
-            margin: 18mm 18mm 22mm 18mm; /* extra bottom margin */
+            margin: 0;
             size: A4 landscape;
         }
 
@@ -10,28 +15,63 @@
             height: 100%;
             margin: 0;
             padding: 0;
-        }
-        
-        body {
-            font-family: 'serif';
-            margin: 0;
-            padding: 0;
             background-color: #ffffff;
             color: #1a2a3a;
-            overflow: hidden;
+            font-family: 'serif';
         }
-        
-        /* Main Container: Ultra-safe height for A4 Landscape */
+
         .page {
-            width: 100%;
-            height: 100%;
-            padding: 0;
-            margin: 0;
+            width: 297mm;
+            height: 210mm;
             position: relative;
             overflow: hidden;
-            box-sizing: border-box;
-            page-break-after: avoid;
+            background: white;
         }
+
+        /* Sophisticated Triple Border Layout using absolute positioning for robust DomPDF rendering */
+        .border-1 {
+            position: absolute;
+            top: 6mm;
+            left: 6mm;
+            right: 6mm;
+            bottom: 6mm;
+            border: 1.2pt solid #c5a059;
+            z-index: 1;
+        }
+
+        .border-2 {
+            position: absolute;
+            top: 8.5mm;
+            left: 8.5mm;
+            right: 8.5mm;
+            bottom: 8.5mm;
+            border: 8pt solid #1a2a3a;
+            z-index: 2;
+        }
+
+        .border-3 {
+            position: absolute;
+            top: 8.5mm;
+            left: 8.5mm;
+            right: 8.5mm;
+            bottom: 8.5mm;
+            border: 1pt solid #c5a059;
+            background: #ffffff;
+            z-index: 3;
+        }
+
+        /* Decorative Corners - Keep these absolute */
+        .corner {
+            position: absolute;
+            width: 12mm;
+            height: 12mm;
+            border: 1.2pt solid #c5a059;
+            z-index: 10;
+        }
+        .corner-tl { top: 0; left: 0; border-right: 0; border-bottom: 0; }
+        .corner-tr { top: 0; right: 0; border-left: 0; border-bottom: 0; }
+        .corner-bl { bottom: 0; left: 0; border-right: 0; border-top: 0; }
+        .corner-br { bottom: 0; right: 0; border-left: 0; border-top: 0; }
 
         /* Watermark Background */
         .watermark {
@@ -39,7 +79,7 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%) rotate(-45deg);
-            font-size: 150pt;
+            font-size: 140pt;
             color: #f0f0f0;
             opacity: 0.15;
             z-index: -1;
@@ -47,56 +87,14 @@
             white-space: nowrap;
         }
 
-        /* Sophisticated Triple Border Layout (absolute insets to avoid page overflow) */
-        .border-1 {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 2mm; /* lift bottom line to avoid clipping */
-            border: 2pt solid #c5a059;
-            box-sizing: border-box;
-        }
-
-        .border-2 {
-            position: absolute;
-            top: 3mm;
-            left: 3mm;
-            right: 3mm;
-            bottom: 3mm;
-            border: 7pt solid #1a2a3a;
-            box-sizing: border-box;
-        }
-
-        .border-3 {
-            position: absolute;
-            top: 3mm;
-            left: 3mm;
-            right: 3mm;
-            bottom: 3mm;
-            border: 1pt solid #c5a059;
-            box-sizing: border-box;
-            background: #ffffff;
-            overflow: hidden;
-        }
-
-        /* Decorative Corners */
-        .corner {
-            position: absolute;
-            width: 12mm;
-            height: 12mm;
-            border: 1.5pt solid #c5a059;
-            z-index: 5;
-        }
-        .corner-tl { top: 0; left: 0; border-right: 0; border-bottom: 0; }
-        .corner-tr { top: 0; right: 0; border-left: 0; border-bottom: 0; }
-        .corner-bl { bottom: 0; left: 0; border-right: 0; border-top: 0; }
-        .corner-br { bottom: 0; right: 0; border-left: 0; border-top: 0; }
-
-        /* Content Area - Shifted slightly up */
+        /* Content Area */
         .content {
-            padding-top: 14mm;
+            position: absolute;
+            top: 25mm;
+            left: 20mm;
+            right: 20mm;
             text-align: center;
+            z-index: 5;
         }
 
         .header-logo {
@@ -118,37 +116,37 @@
         }
 
         .sub-title {
-            font-size: 11pt;
+            font-size: 12pt;
             font-style: italic;
             margin-top: 1mm;
-            margin-bottom: 12mm;
+            margin-bottom: 10mm;
             color: #555;
         }
 
         .label {
-            font-size: 10pt;
-            margin-bottom: 6mm;
+            font-size: 11pt;
+            margin-bottom: 5mm;
             color: #333;
         }
 
         .student-name {
-            font-size: 42pt;
+            font-size: 44pt;
             color: #c5a059;
             font-style: italic;
             margin: 0;
-            text-transform: lowercase;
-            letter-spacing: 1.5pt;
+            text-transform: capitalize;
+            letter-spacing: 1pt;
         }
 
         .underline {
-            width: 140mm;
+            width: 160mm;
             height: 0.5pt;
             background: #e0e0e0;
-            margin: 2mm auto 10mm;
+            margin: 2mm auto 8mm;
         }
 
         .course-info {
-            font-size: 11pt;
+            font-size: 12pt;
             max-width: 80%;
             margin: 0 auto;
             color: #333;
@@ -156,21 +154,21 @@
         }
 
         .course-name {
-            font-size: 20pt;
+            font-size: 22pt;
             font-weight: bold;
             display: block;
             margin-top: 2mm;
-            text-transform: lowercase;
+            text-transform: capitalize;
             color: #1a2a3a;
         }
 
-        /* Footer - Positioned much higher from bottom to prevent cutting */
+        /* Footer */
         .footer {
             position: absolute;
-            bottom: 18mm;
-            left: 20mm;
-            right: 20mm;
-            width: calc(100% - 40mm);
+            bottom: 22mm;
+            left: 25mm;
+            right: 25mm;
+            z-index: 5;
         }
 
         .footer-table {
@@ -180,7 +178,7 @@
 
         .meta {
             text-align: left;
-            font-size: 8pt;
+            font-size: 8.5pt;
             color: #666;
             line-height: 1.4;
         }
@@ -190,14 +188,14 @@
         }
 
         .seal {
-            width: 32mm;
-            height: 32mm;
+            width: 34mm;
+            height: 34mm;
             border: 1pt solid #c5a059;
             border-radius: 50%;
             margin: 0 auto;
             color: #c5a059;
             font-weight: bold;
-            font-size: 8pt;
+            font-size: 9pt;
             padding-top: 10mm;
             box-sizing: border-box;
             transform: rotate(-5deg);
@@ -210,19 +208,19 @@
 
         .sig-line {
             border-top: 1.2pt solid #1a2a3a;
-            width: 50mm;
+            width: 55mm;
             margin: 0 0 2mm auto;
         }
 
         .sig-name {
-            font-size: 10pt;
+            font-size: 11pt;
             font-weight: bold;
             text-transform: uppercase;
             color: #1a2a3a;
         }
 
         .sig-title {
-            font-size: 8pt;
+            font-size: 9pt;
             color: #666;
             font-style: italic;
         }
@@ -230,61 +228,60 @@
 </head>
 <body>
     <div class="page">
-        <div class="watermark">LMS ACADEMY</div>
-        <div class="border-1">
-            <div class="border-2">
-                <div class="border-3">
-                    <div class="corner corner-tl"></div>
-                    <div class="corner corner-tr"></div>
-                    <div class="corner corner-bl"></div>
-                    <div class="corner corner-br"></div>
-                    
-                    <div class="content">
-                        <div class="header-logo">LMS Academy</div>
-                        <h1 class="main-title">Certificate</h1>
-                        <p class="sub-title">of Completion</p>
+        <div class="border-1"></div>
+        <div class="border-2"></div>
+        <div class="border-3">
+            <div class="corner corner-tl"></div>
+            <div class="corner corner-tr"></div>
+            <div class="corner corner-bl"></div>
+            <div class="corner corner-br"></div>
+            
+            <div class="watermark">LMS ACADEMY</div>
+            
+            <div class="content">
+                <div class="header-logo">LMS Academy</div>
+                <h1 class="main-title">Certificate</h1>
+                <p class="sub-title">of Completion</p>
 
-                        <p class="label">This is to certify that</p>
-                        <h2 class="student-name">{{ $student_name }}</h2>
-                        <div class="underline"></div>
+                <p class="label">This is to certify that</p>
+                <h2 class="student-name">{{ $student_name }}</h2>
+                <div class="underline"></div>
 
-                        <p class="course-info">
-                            has successfully completed all the requirements for the course
-                            <span class="course-name">{{ $course_title }}</span>
-                        </p>
-                    </div>
+                <p class="course-info">
+                    has successfully completed all the requirements for the course
+                    <span class="course-name">{{ $course_title }}</span>
+                </p>
+            </div>
 
-                    <div class="footer">
-                        <table class="footer-table" cellspacing="0" cellpadding="0">
-                            <tr>
-                                <td width="35%" valign="bottom">
-                                    <div class="meta">
-                                        CERTIFICATE ID: {{ $certificate_id }}<br>
-                                        ISSUE DATE: {{ $issue_date }}<br>
-                                        COURSE DURATION: {{ $course_duration }}
-                                    </div>
-                                </td>
-                                <td width="30%" valign="bottom">
-                                    <div class="seal-wrap">
-                                        <div class="seal">
-                                            OFFICIAL<br>GRADUATE<br>{{ date('Y') }}
-                                        </div>
-                                    </div>
-                                </td>
-                                <td width="35%" valign="bottom">
-                                    <div class="signature">
-                                        <div style="font-size: 10pt; font-weight: bold; margin-bottom: 2mm; text-transform: uppercase; color: #1a2a3a;">{{ $instructor_name }}</div>
-                                        <div class="sig-line"></div>
-                                        <div class="sig-name">INSTRUCTOR</div>
-                                        <div class="sig-title">Course Instructor</div>
-                                    </div>
-                                </td>
-                            </tr>
-                        </table>
-                    </div>
-
-                </div>
+            <div class="footer">
+                <table class="footer-table" cellspacing="0" cellpadding="0">
+                    <tr>
+                        <td width="35%" valign="bottom">
+                            <div class="meta">
+                                CERTIFICATE ID: {{ $certificate_id }}<br>
+                                ISSUE DATE: {{ $issue_date }}<br>
+                                COURSE DURATION: {{ $course_duration }}
+                            </div>
+                        </td>
+                        <td width="30%" valign="bottom">
+                            <div class="seal-wrap">
+                                <div class="seal">
+                                    OFFICIAL<br>GRADUATE<br>{{ date('Y') }}
+                                </div>
+                            </div>
+                        </td>
+                        <td width="35%" valign="bottom">
+                            <div class="signature">
+                                <div style="font-size: 10pt; font-weight: bold; margin-bottom: 2mm; text-transform: uppercase; color: #1a2a3a;">{{ $instructor_name }}</div>
+                                <div class="sig-line"></div>
+                                <div class="sig-name">INSTRUCTOR</div>
+                                <div class="sig-title">Course Instructor</div>
+                            </div>
+                        </td>
+                    </tr>
+                </table>
             </div>
         </div>
     </div>
 </body>
+</html>

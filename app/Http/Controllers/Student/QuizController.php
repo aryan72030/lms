@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Student;
 use App\Http\Controllers\Controller;
 use App\Mail\CourseCompletion;
 use App\Models\Enrollment;
-use App\Models\Lesson;
 use App\Models\Quiz;
 use App\Models\QuizAttempt;
 use App\Models\QuizQuestion;
@@ -32,19 +31,19 @@ class QuizController extends Controller
 
         $courseIds = $enrollments->pluck('course_id');
 
-        $quizzes = Quiz::with('course')
+        $quizzes = Quiz::with(['course', 'attempts' => function ($query) use ($student) {
+            $query->where('student_id', $student->id)->where('status', 'completed');
+        }])
             ->whereIn('course_id', $courseIds)
             ->where('is_active', true)
             ->get()
             ->map(function (Quiz $quiz) use ($student) {
-                $attempts = QuizAttempt::where('student_id', $student->id)
-                    ->where('lesson_id', $quiz->id)
-                    ->where('status', 'completed')
-                    ->get();
+                $attempts = $quiz->attempts;
 
                 $bestAttempt = $attempts->sortByDesc('percentage')->first();
                 $hasPassed = $attempts->where('is_passed', true)->isNotEmpty();
                 $isReady = $quiz->isReadyForStudents();
+                $canAttempt = $isReady && $quiz->canStudentAttempt($student->id);
 
                 return [
                     'id' => $quiz->id,
@@ -65,7 +64,7 @@ class QuizController extends Controller
                         'attempts_used' => $attempts->count(),
                         'best_score' => $bestAttempt ? round((float) $bestAttempt->percentage, 1) : null,
                         'has_passed' => $hasPassed,
-                        'can_attempt' => $isReady && ($attempts->count() < $quiz->max_attempts),
+                        'can_attempt' => $canAttempt,
                         'last_attempt_date' => $attempts->last()?->created_at?->format('M d, Y'),
                     ],
                 ];
@@ -87,7 +86,7 @@ class QuizController extends Controller
         ]);
     }
 
-    public function start(Request $request, string $quiz): Response
+    public function show(Request $request, string $quiz): Response|RedirectResponse
     {
         $student = $request->user();
 
@@ -106,12 +105,17 @@ class QuizController extends Controller
             abort(403, 'You are not enrolled in this course.');
         }
 
+        if ($enrollment->isExpired()) {
+            return redirect()->route('student.quizzes.index')
+                ->with('error', 'Your access to this course and its quizzes has expired.');
+        }
+
         if (!$quiz->is_active) {
             abort(404, 'This quiz is not available.');
         }
 
         $attempts = QuizAttempt::where('student_id', $student->id)
-            ->where('lesson_id', $quiz->id)
+            ->where('quiz_id', $quiz->id)
             ->where('status', 'completed')
             ->latest('completed_at')
             ->get();
@@ -119,8 +123,9 @@ class QuizController extends Controller
         $bestAttempt = $attempts->sortByDesc('percentage')->first();
         $hasPassed = $attempts->where('is_passed', true)->isNotEmpty();
         $isReady = $quiz->isReadyForStudents();
+        $canAttempt = $isReady && $quiz->canStudentAttempt($student->id);
 
-        return Inertia::render('student/quizzes/start', [
+        return Inertia::render('student/quizzes/show', [
             'quiz' => [
                 'id' => $quiz->id,
                 'title' => $quiz->title,
@@ -140,7 +145,7 @@ class QuizController extends Controller
                     'attempts_used' => $attempts->count(),
                     'best_score' => $bestAttempt ? round((float) $bestAttempt->percentage, 1) : null,
                     'has_passed' => $hasPassed,
-                    'can_attempt' => $isReady && ($attempts->count() < $quiz->max_attempts),
+                    'can_attempt' => $canAttempt,
                     'previous_attempts' => $attempts->map(fn (QuizAttempt $attempt) => [
                         'attempt_number' => $attempt->attempt_number,
                         'score' => $attempt->score,
@@ -169,7 +174,7 @@ class QuizController extends Controller
 
         // Never create attempts on GET/HEAD (prefetches, accidental visits, etc.)
         if (!$request->isMethod('post')) {
-            return redirect()->route('student.quizzes.start', (string) $quiz->id);
+            return redirect()->route('student.quizzes.show', (string) $quiz->id);
         }
 
         $enrollment = Enrollment::where('student_id', $student->id)
@@ -181,32 +186,47 @@ class QuizController extends Controller
             abort(403, 'You are not enrolled in this course.');
         }
 
+        if ($enrollment->isExpired()) {
+            return redirect()->route('student.quizzes.index')
+                ->with('error', 'Your access to this course and its quizzes has expired.');
+        }
+
         if (!$quiz->is_active) {
             abort(404, 'This quiz is not available.');
         }
 
         if (!$quiz->isReadyForStudents()) {
-            return redirect()->route('student.quizzes.start', $quiz->id)
+            return redirect()->route('student.quizzes.show', $quiz->id)
                 ->with('error', 'This quiz is not ready yet (no questions/marks). Please try later.');
         }
 
-        $completedAttempts = QuizAttempt::where('student_id', $student->id)
-            ->where('lesson_id', $quiz->id)
-            ->where('status', 'completed')
-            ->count();
+        $existingInProgressAttempt = QuizAttempt::where('student_id', $student->id)
+            ->where('quiz_id', $quiz->id)
+            ->where('status', 'in_progress')
+            ->latest('started_at')
+            ->first();
 
-        if ($completedAttempts >= $quiz->max_attempts) {
-            return redirect()->route('student.quizzes.start', $quiz)
+        if ($existingInProgressAttempt) {
+            return redirect()->route('student.quiz-attempts.show', $existingInProgressAttempt);
+        }
+
+        if ($quiz->hasStudentPassed($student->id)) {
+            return redirect()->route('student.quizzes.show', $quiz)
+                ->with('error', 'You have already passed this quiz.');
+        }
+
+        if (!$quiz->canStudentAttempt($student->id)) {
+            return redirect()->route('student.quizzes.show', $quiz)
                 ->with('error', 'You have reached the maximum number of attempts for this quiz.');
         }
 
         $nextAttemptNumber = (QuizAttempt::where('student_id', $student->id)
-            ->where('lesson_id', $quiz->id)
+            ->where('quiz_id', $quiz->id)
             ->max('attempt_number') ?? 0) + 1;
 
         $attempt = QuizAttempt::create([
             'student_id' => $student->id,
-            'lesson_id' => $quiz->id,
+            'quiz_id' => $quiz->id,
             'enrollment_id' => $enrollment->id,
             'attempt_number' => $nextAttemptNumber,
             'answers' => [],
@@ -214,10 +234,10 @@ class QuizController extends Controller
             'status' => 'in_progress',
         ]);
 
-        return redirect()->route('student.quiz-attempts.take', $attempt);
+        return redirect()->route('student.quiz-attempts.show', $attempt);
     }
 
-    public function take(Request $request, QuizAttempt $attempt): Response|RedirectResponse
+    public function showAttempt(Request $request, QuizAttempt $attempt): Response|RedirectResponse
     {
         $student = $request->user();
 
@@ -226,37 +246,44 @@ class QuizController extends Controller
         }
 
         if ($attempt->status !== 'in_progress') {
-            return redirect()->route('student.quiz-attempts.results', $attempt);
+            return redirect()->route('student.quizzes.results', $attempt->quiz_id);
         }
 
-        $quiz = $attempt->quiz()->with(['questions' => function ($q) {
-            $q->where('is_active', true)->orderBy('order');
+        $quiz = $attempt->quiz()->with(['course', 'questions' => function ($q) {
+            $q->where('is_active', true);
         }])->firstOrFail();
+
+        // Shuffle questions based on attempt ID as seed so order is fixed per attempt but random for different students
+        $questions = $quiz->questions->shuffle($attempt->id);
+
+        $enrollment = $attempt->enrollment()->first();
+        if ($enrollment && $enrollment->isExpired()) {
+            return redirect()->route('student.quizzes.index')
+                ->with('error', 'Your access to this course and its quizzes has expired.');
+        }
 
         $timeLimitMinutes = $quiz->time_limit;
         $elapsedSeconds = $attempt->started_at ? $attempt->started_at->diffInSeconds(now()) : 0;
         $remainingTime = is_null($timeLimitMinutes) ? null : max((((int) $timeLimitMinutes) * 60) - $elapsedSeconds, 0);
 
-        $currentQuestionIndex = (int) $request->query('q', 0);
-        if ($currentQuestionIndex < 0) {
-            $currentQuestionIndex = 0;
-        }
-
-        return Inertia::render('student/quizzes/take', [
+        return Inertia::render('student/quizzes/show', [
+            'quiz' => [
+                'id' => $quiz->id,
+                'title' => $quiz->title,
+                'course' => [
+                    'id' => $quiz->course->id,
+                    'title' => $quiz->course->title,
+                ],
+                'time_limit' => $quiz->time_limit,
+                'questions_count' => $quiz->questions->count(),
+            ],
             'attempt' => [
                 'id' => $attempt->id,
-                'quiz' => [
-                    'id' => $quiz->id,
-                    'title' => $quiz->title,
-                    'is_final_quiz' => $quiz->is_final_quiz,
-                    'time_limit' => $quiz->time_limit,
-                    'questions_count' => $quiz->questions->count(),
-                ],
                 'answers' => $attempt->answers ?? [],
                 'started_at' => $attempt->started_at?->toISOString(),
                 'remaining_time' => $remainingTime,
             ],
-            'questions' => $quiz->questions->map(fn (QuizQuestion $question) => [
+            'questions' => $questions->map(fn (QuizQuestion $question) => [
                 'id' => $question->id,
                 'question_text' => $question->question_text,
                 'question_type' => $question->question_type,
@@ -264,9 +291,14 @@ class QuizController extends Controller
                 'points' => $question->points,
                 'order' => $question->order,
             ])->values(),
-            'currentQuestionIndex' => $currentQuestionIndex,
+            'enrollment' => [
+                'id' => $enrollment->id,
+                'progress' => $enrollment->progress,
+            ],
         ]);
     }
+
+
 
     public function answer(Request $request, QuizAttempt $attempt): JsonResponse
     {
@@ -286,7 +318,7 @@ class QuizController extends Controller
         ]);
 
         $question = QuizQuestion::findOrFail($validated['question_id']);
-        if ($question->quiz_id !== $attempt->lesson_id) {
+        if ($question->quiz_id !== $attempt->quiz_id) {
             return response()->json(['success' => false, 'message' => 'Question does not belong to this quiz.'], 403);
         }
 
@@ -310,18 +342,39 @@ class QuizController extends Controller
         }
 
         $validated = $request->validate([
-            'answers' => 'required|array',
+            'answers' => 'nullable|array',
         ]);
 
-        $attempt->answers = $validated['answers'];
-        $attempt->time_spent = $attempt->started_at ? $attempt->started_at->diffInMinutes(now()) : null;
+        $quiz = $attempt->quiz()->first();
+        $submittedAnswers = $validated['answers'] ?? [];
+
+        // Validate time limit on backend (with 2 min grace period)
+        if ($quiz && $quiz->time_limit) {
+            $elapsedMinutes = $attempt->started_at->floatDiffInMinutes(now());
+            if ($elapsedMinutes > ($quiz->time_limit + 2)) {
+                // Timeout exceeded: ignore submitted answers and keep auto-saved ones
+                $submittedAnswers = [];
+            }
+        }
+
+        // Use valid submitted answers or fall back to previously saved answers
+        if (!empty($submittedAnswers)) {
+            $attempt->answers = $submittedAnswers;
+        } else {
+            $attempt->answers = $attempt->answers ?? [];
+        }
         $attempt->completed_at = now();
         $attempt->calculateScore();
         $attempt->save();
 
         if ($attempt->isPassed()) {
             $enrollment = $attempt->enrollment()->first();
-            $quiz = $attempt->quiz()->first();
+
+            // Update enrollment progress since a key evaluation is done
+            if ($enrollment) {
+                $progressData = $enrollment->getProgressData();
+                $enrollment->updateProgress($progressData['progress_percentage']);
+            }
 
             if ($enrollment && $quiz && $quiz->is_final_quiz) {
                 $enrollment->completion_date = now();
@@ -344,7 +397,7 @@ class QuizController extends Controller
                 $emailSettings = Setting::getEmailSettings();
                 if (($emailSettings['enabled'] ?? false) && ($emailSettings['types']['course_completion'] ?? false)) {
                     try {
-                        Mail::to($student->email)->send(new CourseCompletion($enrollment));
+                        Mail::to($student->email)->queue(new CourseCompletion($enrollment));
                     } catch (\Exception $mailException) {
                         Log::error('Failed to send course completion email to student: ' . $student->email, [
                             'error' => $mailException->getMessage(),
@@ -358,66 +411,7 @@ class QuizController extends Controller
         return redirect()->route('student.quiz-attempts.results', $attempt);
     }
 
-    public function results(Request $request, QuizAttempt $attempt): Response
-    {
-        $student = $request->user();
 
-        if ($attempt->student_id !== $student->id) {
-            abort(403, 'Unauthorized access to quiz results.');
-        }
-
-        $attempt->load(['quiz.course', 'quiz.questions']);
-        $quiz = $attempt->quiz;
-        $answers = $attempt->answers ?? [];
-
-        $questionsWithResults = $quiz->questions
-            ->where('is_active', true)
-            ->sortBy('order')
-            ->values()
-            ->map(function (QuizQuestion $question) use ($answers) {
-                $studentAnswer = $answers[(string) $question->id] ?? null;
-                $isCorrect = !is_null($studentAnswer) && $question->isCorrectAnswer((string) $studentAnswer);
-
-                return [
-                    'id' => $question->id,
-                    'question_text' => $question->question_text,
-                    'question_type' => $question->question_type,
-                    'options' => $question->question_type === QuizQuestion::TYPE_MULTIPLE_CHOICE ? $question->getFormattedOptions() : [],
-                    'student_answer' => $studentAnswer,
-                    'correct_answer' => $question->correct_answer,
-                    'is_correct' => $isCorrect,
-                    'explanation' => $question->explanation,
-                    'points' => (int) $question->points,
-                ];
-            })
-            ->values();
-
-        return Inertia::render('student/quizzes/results', [
-            'attempt' => [
-                'id' => $attempt->id,
-                'score' => $attempt->score,
-                'max_score' => $attempt->max_score,
-                'percentage' => $attempt->percentage,
-                'passed' => $attempt->isPassed(),
-                'completed_at' => $attempt->completed_at?->format('M d, Y H:i'),
-                'time_spent' => $attempt->time_spent,
-                'grade_letter' => $attempt->getGradeLetter(),
-            ],
-            'quiz' => [
-                'id' => $quiz->id,
-                'title' => $quiz->title,
-                'passing_score' => $quiz->passing_score,
-                'course' => [
-                    'id' => $quiz->course->id,
-                    'title' => $quiz->course->title,
-                ],
-            ],
-            'questions' => $questionsWithResults,
-            'settings' => [
-                'show_correct_answers' => true,
-            ],
-        ]);
-    }
 
     public function quizResults(Request $request, string $quiz): RedirectResponse
     {
@@ -430,80 +424,64 @@ class QuizController extends Controller
         }
 
         $attempt = QuizAttempt::where('student_id', $student->id)
-            ->where('lesson_id', $quiz->id)
+            ->where('quiz_id', $quiz->id)
             ->where('status', 'completed')
             ->orderBy('percentage', 'desc')
             ->first();
 
         if (!$attempt) {
-            return redirect()->route('student.quizzes.start', $quiz)
+            return redirect()->route('student.quizzes.show', $quiz)
                 ->with('error', 'No completed attempts found for this quiz.');
         }
 
         return redirect()->route('student.quiz-attempts.results', $attempt);
     }
 
-    /**
-     * Legacy route compatibility: older UI links quiz lessons to /student/lessons/{lesson}/quiz.
-     * Redirect to the new quiz module when possible.
-     */
-    public function legacyLessonQuiz(Request $request, Lesson $lesson): RedirectResponse
+    public function showResults(Request $request, QuizAttempt $attempt): Response
     {
         $student = $request->user();
 
-        $enrollment = Enrollment::where('student_id', $student->id)
-            ->where('course_id', $lesson->course_id)
-            ->where('status', Enrollment::STATUS_ACTIVE)
-            ->first();
-
-        if (!$enrollment) {
-            abort(403, 'You are not enrolled in this course.');
+        if ($attempt->student_id !== $student->id) {
+            abort(403, 'Unauthorized access to quiz results.');
         }
 
-        if ($lesson->type !== Lesson::TYPE_QUIZ) {
-            abort(404, 'This lesson is not a quiz.');
-        }
+        $attempt->load(['quiz.course', 'quiz.questions' => function ($q) {
+            $q->where('is_active', true)->orderBy('order');
+        }]);
 
-        $quiz = Quiz::where('course_id', $lesson->course_id)
-            ->where('is_active', true)
-            ->where('title', $lesson->title)
-            ->first();
 
-        if ($quiz) {
-            return redirect()->route('student.quizzes.start', $quiz);
-        }
 
-        return redirect()->route('student.quizzes.index')
-            ->with('error', 'This quiz lesson is not linked to a Quiz Management quiz. Please open the Quizzes page.');
+        return Inertia::render('student/quizzes/results', [
+            'attempt' => [
+                'id' => $attempt->id,
+                'score' => $attempt->score,
+                'max_score' => $attempt->max_score,
+                'percentage' => round((float) $attempt->percentage, 1),
+                'is_passed' => (bool) $attempt->is_passed,
+                'completed_at' => $attempt->completed_at?->format('M d, Y H:i'),
+                'time_spent' => $attempt->time_spent,
+                'answers' => $attempt->answers,
+            ],
+            'quiz' => [
+                'id' => $attempt->quiz->id,
+                'title' => $attempt->quiz->title,
+                'passing_score' => $attempt->quiz->passing_score,
+                'course' => [
+                    'id' => $attempt->quiz->course->id,
+                    'title' => $attempt->quiz->course->title,
+                ],
+            ],
+            'questions' => $attempt->quiz->questions->map(fn (QuizQuestion $question) => [
+                'id' => $question->id,
+                'question_text' => $question->question_text,
+                'question_type' => $question->question_type,
+                'options' => $question->getFormattedOptions(),
+                'correct_answer' => $question->correct_answer,
+                'points' => $question->points,
+            ]),
+            'enrollment_id' => $attempt->enrollment_id,
+        ]);
     }
 
-    public function legacyLessonAttempt(Request $request, Lesson $lesson): RedirectResponse
-    {
-        $student = $request->user();
 
-        $enrollment = Enrollment::where('student_id', $student->id)
-            ->where('course_id', $lesson->course_id)
-            ->where('status', Enrollment::STATUS_ACTIVE)
-            ->first();
-
-        if (!$enrollment) {
-            abort(403, 'You are not enrolled in this course.');
-        }
-
-        if ($lesson->type !== Lesson::TYPE_QUIZ) {
-            abort(404, 'This lesson is not a quiz.');
-        }
-
-        $quiz = Quiz::where('course_id', $lesson->course_id)
-            ->where('is_active', true)
-            ->where('title', $lesson->title)
-            ->first();
-
-        if (!$quiz) {
-            return redirect()->route('student.quizzes.index')
-                ->with('error', 'Quiz not found for this lesson. Please use the Quizzes page.');
-        }
-
-        return $this->attempt($request, (string) $quiz->id);
-    }
 }

@@ -10,7 +10,7 @@ use App\Models\Payment;
 use App\Models\Lesson;
 use App\Models\Quiz;
 use App\Models\QuizAttempt;
-use App\Models\AssignmentSubmission;
+use App\Models\CourseAssignmentSubmission;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -56,7 +56,7 @@ class DashboardController extends Controller
         // Content statistics
         $lessonsCount = Lesson::whereIn('course_id', $courseIds)->count();
         $quizzesCount = Quiz::whereIn('course_id', $courseIds)->count();
-        $assignmentsCount = Lesson::whereIn('course_id', $courseIds)->where('type', Lesson::TYPE_ASSIGNMENT)->count();
+        $assignmentsCount = \App\Models\CourseAssignment::whereIn('course_id', $courseIds)->count();
 
         $stats = [
             'total_courses' => $totalCourses,
@@ -113,8 +113,8 @@ class DashboardController extends Controller
             });
 
         // Recent Activity (Quiz attempts, Assignment submissions)
-        $recent_quiz_attempts = QuizAttempt::with(['student', 'quiz.course'])
-            ->whereIn('lesson_id', function ($query) use ($courseIds) {
+        $recent_quiz_attempts = collect(QuizAttempt::with(['student', 'quiz.course'])
+            ->whereIn('quiz_id', function ($query) use ($courseIds) {
                 $query->select('id')->from('quizzes')->whereIn('course_id', $courseIds);
             })
             ->orderBy('created_at', 'desc')
@@ -129,9 +129,31 @@ class DashboardController extends Controller
                     'date' => $attempt->created_at->diffForHumans(),
                     'score' => $attempt->percentage,
                 ];
-            });
+            }));
 
-        $recent_activity = $recent_quiz_attempts; // Can merge more later
+        $recent_assignment_completions = collect(CourseAssignmentSubmission::with(['student', 'assignment.course'])
+            ->whereIn('course_assignment_id', function ($query) use ($courseIds) {
+                $query->select('id')->from('course_assignments')->whereIn('course_id', $courseIds);
+            })
+            ->whereNotNull('submitted_at')
+            ->orderBy('submitted_at', 'desc')
+            ->limit(5)
+            ->get()
+            ->map(function ($submission) {
+                return [
+                    'type' => 'assignment',
+                    'student_name' => $submission->student->name,
+                    'course_title' => $submission->assignment->course->title,
+                    'activity' => 'Submitted assignment: ' . $submission->assignment->title,
+                    'date' => $submission->submitted_at->diffForHumans(),
+                    'score' => $submission->percentage ?? 0,
+                ];
+            }));
+
+        $recent_activity = $recent_quiz_attempts->merge($recent_assignment_completions)
+            ->sortByDesc('date')
+            ->values()
+            ->take(5);
 
         // Top Performing Courses
         $top_courses = Course::where('instructor_id', $instructorId)

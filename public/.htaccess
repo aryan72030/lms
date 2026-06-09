@@ -1,4 +1,10 @@
 <IfModule mod_rewrite.c>
+    # Increase upload limits for larger files
+    php_value upload_max_filesize 64M
+    php_value post_max_size 64M
+    php_value max_execution_time 300
+    php_value max_input_time 300
+
     <IfModule mod_negotiation.c>
         Options -MultiViews -Indexes
     </IfModule>

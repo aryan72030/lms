@@ -50,7 +50,10 @@ class CourseController extends Controller
                 'slug' => $course->slug,
                 'description' => $course->description,
                 'objectives' => $course->objectives,
+                'requirements' => $course->requirements,
+                'target_audience' => $course->target_audience,
                 'price' => $course->price,
+                'access_duration' => $course->access_duration,
                 'duration_hours' => $course->duration_hours,
                 'difficulty_level' => $course->difficulty_level,
                 'thumbnail' => $course->thumbnail ? '/files/' . $course->thumbnail : null,
@@ -138,6 +141,7 @@ class CourseController extends Controller
         $this->ensureAdmin($request);
 
         $maxSize = Setting::get('max_file_upload_size', 2) * 1024; // KB
+        $allowFree = Setting::get('allow_free_courses', true);
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'required|string|min:50',
@@ -146,7 +150,8 @@ class CourseController extends Controller
             'target_audience' => 'nullable|array',
             'language' => 'required|string',
             'thumbnail' => "nullable|image|max:{$maxSize}",
-            'price' => 'required|numeric|min:0|max:9999.99',
+            'price' => ['required', 'numeric', 'max:9999.99', $allowFree ? 'min:0' : 'min:1'],
+            'access_duration' => 'nullable|integer|min:0|max:3650',
             'duration_hours' => 'required|integer|min:1|max:500',
             'difficulty_level' => 'required|in:' . implode(',', [
                 Course::DIFFICULTY_BEGINNER,
@@ -155,6 +160,8 @@ class CourseController extends Controller
             ]),
             'instructor_id' => 'required|exists:users,id',
             'category_id' => 'required|exists:course_categories,id',
+        ], [
+            'price.min' => $allowFree ? 'Price must be at least 0.' : 'Free courses are not allowed. Price must be at least 1.',
         ]);
 
         // Verify instructor role
@@ -193,7 +200,19 @@ class CourseController extends Controller
                 $validated['thumbnail'] = $path;
             }
 
-            $validated['status'] = Course::STATUS_DRAFT;
+            // Determine course status based on settings
+            // For courses created by admin, we can auto-approve them or set them to published
+            if ($request->user()->isAdmin() || Setting::get('auto_approve_courses', false)) {
+                $validated['status'] = Course::STATUS_PUBLISHED;
+                $validated['approved_by'] = $request->user()->id;
+                $validated['approved_at'] = now();
+                $validated['published_at'] = now();
+            } else if (Setting::get('require_admin_approval', true)) {
+                $validated['status'] = Course::STATUS_REVIEW;
+                $validated['submitted_at'] = now();
+            } else {
+                $validated['status'] = Course::STATUS_DRAFT;
+            }
 
             $course = Course::create($validated);
 
@@ -214,7 +233,7 @@ class CourseController extends Controller
             if ($request->expectsJson()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Failed to create course. Please try again.'
+                    'message' => 'Failed to create course. Reason: ' . $e->getMessage()
                 ], 500);
             }
             return redirect()->back()
@@ -250,6 +269,7 @@ class CourseController extends Controller
                 'thumbnail' => $course->thumbnail ? '/files/' . $course->thumbnail : null,
                 'language' => $course->language ?? 'English',
                 'price' => $course->price,
+                'access_duration' => $course->access_duration,
                 'duration_hours' => $course->duration_hours,
                 'difficulty_level' => $course->difficulty_level,
                 'category_id' => $course->category_id,
@@ -272,6 +292,7 @@ class CourseController extends Controller
         $this->ensureAdmin($request);
 
         $maxSize = Setting::get('max_file_upload_size', 2) * 1024; // KB
+        $allowFree = Setting::get('allow_free_courses', true);
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'required|string|min:50',
@@ -280,7 +301,8 @@ class CourseController extends Controller
             'target_audience' => 'nullable|array',
             'language' => 'required|string',
             'thumbnail' => "nullable|image|max:{$maxSize}",
-            'price' => 'required|numeric|min:0|max:9999.99',
+            'price' => ['required', 'numeric', 'max:9999.99', $allowFree ? 'min:0' : 'min:1'],
+            'access_duration' => 'nullable|integer|min:0|max:3650',
             'duration_hours' => 'required|integer|min:1|max:500',
             'difficulty_level' => 'required|in:' . implode(',', [
                 Course::DIFFICULTY_BEGINNER,
@@ -289,6 +311,8 @@ class CourseController extends Controller
             ]),
             'instructor_id' => 'required|exists:users,id',
             'category_id' => 'required|exists:course_categories,id',
+        ], [
+            'price.min' => $allowFree ? 'Price must be at least 0.' : 'Free courses are not allowed. Price must be at least 1.',
         ]);
 
         // Verify instructor role

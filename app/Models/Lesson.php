@@ -12,10 +12,8 @@ class Lesson extends Model
     use HasFactory, SoftDeletes;
 
     // Lesson type constants
-    const TYPE_TEXT = 'Text';
+    const TYPE_TEXT  = 'Text';
     const TYPE_VIDEO = 'Video';
-    const TYPE_QUIZ = 'Quiz';
-    const TYPE_ASSIGNMENT = 'Assignment';
 
     protected $fillable = [
         'title',
@@ -28,16 +26,12 @@ class Lesson extends Model
         'text_content',
         'video_url',
         'video_duration',
-        'quiz_data',
-        'assignment_data',
         'estimated_duration',
         'resources',
     ];
 
     protected $casts = [
         'is_published' => 'boolean',
-        'quiz_data' => 'array',
-        'assignment_data' => 'array',
         'resources' => 'array',
     ];
 
@@ -48,7 +42,13 @@ class Lesson extends Model
         // Auto-assign order when creating new lesson
         static::creating(function ($lesson) {
             if (is_null($lesson->order)) {
-                $maxOrder = static::where('course_id', $lesson->course_id)->max('order');
+                $maxOrder = static::where('course_id', $lesson->course_id)
+                    ->when($lesson->section_id, function($q) use ($lesson) {
+                        return $q->where('section_id', $lesson->section_id);
+                    }, function($q) {
+                        return $q->whereNull('section_id');
+                    })
+                    ->max('order');
                 $lesson->order = ($maxOrder ?? 0) + 1;
             }
         });
@@ -70,10 +70,7 @@ class Lesson extends Model
         return $this->hasMany(LessonProgress::class);
     }
 
-    public function submissions()
-    {
-        return $this->hasMany(AssignmentSubmission::class);
-    }
+
 
     // Type helper methods
     public function isText(): bool
@@ -86,28 +83,13 @@ class Lesson extends Model
         return $this->type === self::TYPE_VIDEO;
     }
 
-    public function isQuiz(): bool
-    {
-        return $this->type === self::TYPE_QUIZ;
-    }
-
-    public function isAssignment(): bool
-    {
-        return $this->type === self::TYPE_ASSIGNMENT;
-    }
-
     // Content helper methods
     public function getContentAttribute()
     {
         return match($this->type) {
-            self::TYPE_TEXT => $this->text_content,
-            self::TYPE_VIDEO => [
-                'url' => $this->video_url,
-                'duration' => $this->video_duration,
-            ],
-            self::TYPE_QUIZ => $this->quiz_data,
-            self::TYPE_ASSIGNMENT => $this->assignment_data,
-            default => null,
+            self::TYPE_TEXT  => $this->text_content,
+            self::TYPE_VIDEO => ['url' => $this->video_url, 'duration' => $this->video_duration],
+            default          => null,
         };
     }
 
@@ -116,8 +98,6 @@ class Lesson extends Model
         return match($this->type) {
             self::TYPE_TEXT => 'FileText',
             self::TYPE_VIDEO => 'Play',
-            self::TYPE_QUIZ => 'HelpCircle',
-            self::TYPE_ASSIGNMENT => 'ClipboardList',
             default => 'FileText',
         };
     }
@@ -127,8 +107,6 @@ class Lesson extends Model
         return match($this->type) {
             self::TYPE_TEXT => 'blue',
             self::TYPE_VIDEO => 'red',
-            self::TYPE_QUIZ => 'green',
-            self::TYPE_ASSIGNMENT => 'purple',
             default => 'gray',
         };
     }
@@ -153,6 +131,7 @@ class Lesson extends Model
     public function moveUp(): bool
     {
         $previousLesson = static::where('course_id', $this->course_id)
+            ->where('section_id', $this->section_id)
             ->where('order', '<', $this->order)
             ->orderBy('order', 'desc')
             ->first();
@@ -168,6 +147,7 @@ class Lesson extends Model
     public function moveDown(): bool
     {
         $nextLesson = static::where('course_id', $this->course_id)
+            ->where('section_id', $this->section_id)
             ->where('order', '>', $this->order)
             ->orderBy('order', 'asc')
             ->first();
@@ -252,17 +232,6 @@ class Lesson extends Model
                 }
                 break;
 
-            case self::TYPE_QUIZ:
-                if (empty($this->quiz_data) || !isset($this->quiz_data['questions']) || empty($this->quiz_data['questions'])) {
-                    $errors[] = 'At least one question is required for quiz lessons.';
-                }
-                break;
-
-            case self::TYPE_ASSIGNMENT:
-                if (empty($this->assignment_data) || empty($this->assignment_data['instructions'])) {
-                    $errors[] = 'Assignment instructions are required for assignment lessons.';
-                }
-                break;
         }
 
         return $errors;
@@ -274,8 +243,6 @@ class Lesson extends Model
         return [
             self::TYPE_TEXT,
             self::TYPE_VIDEO,
-            self::TYPE_QUIZ,
-            self::TYPE_ASSIGNMENT,
         ];
     }
 

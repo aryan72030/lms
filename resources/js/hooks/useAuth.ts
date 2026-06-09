@@ -20,22 +20,23 @@ interface PageProps {
 
 export function useAuth() {
     const { auth } = usePage<PageProps>().props;
-    
+
     return {
         user: auth.user,
         isAuthenticated: !!auth.user,
         isAdmin: auth.user?.is_admin ?? false,
         isInstructor: auth.user?.is_instructor ?? false,
         isStudent: auth.user?.is_student ?? false,
-        hasRole: (role: 'Admin' | 'Instructor' | 'Student') => auth.user?.role === role,
-        hasAnyRole: (roles: ('Admin' | 'Instructor' | 'Student')[]) => 
+        hasRole: (role: 'Admin' | 'Instructor' | 'Student') =>
+            auth.user?.role === role,
+        hasAnyRole: (roles: ('Admin' | 'Instructor' | 'Student')[]) =>
             auth.user ? roles.includes(auth.user.role) : false,
     };
 }
 
 export function useRoleGuard() {
     const { isAdmin, isInstructor, isStudent, hasRole, hasAnyRole } = useAuth();
-    
+
     return {
         canAccessAdmin: isAdmin,
         canAccessInstructor: isInstructor || isAdmin, // Admin can access instructor features

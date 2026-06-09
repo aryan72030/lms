@@ -96,28 +96,33 @@ class EnrollmentController extends Controller
             ]);
 
         // Get enrollment statistics
+        $baseQuery = Enrollment::whereHas('course', fn($q) => $q->where('instructor_id', Auth::id()));
         $stats = [
-            'total_enrollments' => Enrollment::whereHas('course', fn($q) => $q->where('instructor_id', Auth::id()))->count(),
-            'active_enrollments' => Enrollment::whereHas('course', fn($q) => $q->where('instructor_id', Auth::id()))->where('status', 'Active')->count(),
-            'completed_enrollments' => Enrollment::whereHas('course', fn($q) => $q->where('instructor_id', Auth::id()))->whereNotNull('completion_date')->count(),
-            'total_revenue' => (float) Enrollment::whereHas('course', fn($q) => $q->where('instructor_id', Auth::id()))->where('payment_status', 'Completed')->sum('amount_paid'),
+            'total_enrollments'     => (clone $baseQuery)->count(),
+            'active_enrollments'    => (clone $baseQuery)->where('status', 'Active')->count(),
+            'completed_enrollments' => (clone $baseQuery)->whereNotNull('completion_date')->count(),
+            'total_revenue'         => (float) (clone $baseQuery)->where('payment_status', Enrollment::PAYMENT_STATUS_COMPLETED)->sum('amount_paid'),
         ];
 
         return Inertia::render('instructor/enrollments/index', [
             'enrollments' => $enrollments,
+            'enrollments_total' => $enrollments->total(),
             'courses' => $courses,
             'stats' => $stats,
             'filters' => $request->only(['search', 'course_id', 'status', 'payment_status']),
             'statuses' => [
-                'active' => 'Active',
-                'inactive' => 'Inactive',
-                'completed' => 'Completed',
+                Enrollment::STATUS_ACTIVE => 'Active',
+                Enrollment::STATUS_INACTIVE => 'Inactive',
+                'Completed' => 'Completed',
+                Enrollment::STATUS_CANCELLED => 'Cancelled',
+                Enrollment::STATUS_REFUNDED => 'Refunded',
+                Enrollment::STATUS_REFUND_REQUESTED => 'Refund Requested',
             ],
             'paymentStatuses' => [
-                'pending' => 'Pending',
-                'completed' => 'Completed',
-                'failed' => 'Failed',
-                'refunded' => 'Refunded',
+                Enrollment::PAYMENT_STATUS_FREE => 'Free',
+                Enrollment::PAYMENT_STATUS_PENDING => 'Pending',
+                Enrollment::PAYMENT_STATUS_COMPLETED => 'Completed',
+                Enrollment::PAYMENT_STATUS_FAILED => 'Failed',
             ],
         ]);
     }
@@ -162,6 +167,28 @@ class EnrollmentController extends Controller
                     'is_completed' => $progress->is_completed,
                 ]),
             ],
+        ]);
+    }
+
+    /**
+     * Get enrollment details for Modal view
+     */
+    public function getDetails(Request $request, Enrollment $enrollment)
+    {
+        $this->ensureInstructor($request);
+        $this->ensureOwnership($request, $enrollment);
+
+        $enrollment->load([
+            'student:id,name,email',
+            'course:id,title,price,instructor_id',
+            'course.lessons:id,course_id,title,type,order',
+            'lessonProgress'
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'enrollment' => $enrollment,
+            'completed_lesson_ids' => $enrollment->lessonProgress->pluck('lesson_id')->toArray()
         ]);
     }
 

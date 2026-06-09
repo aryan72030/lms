@@ -13,8 +13,7 @@ class QuizAttempt extends Model
 
     protected $fillable = [
         'student_id',
-        // NOTE: DB column is `lesson_id`, but it references `quizzes.id` (see migrations).
-        'lesson_id',
+        'quiz_id',
         'enrollment_id',
         'attempt_number',
         'answers',
@@ -45,7 +44,7 @@ class QuizAttempt extends Model
 
     public function quiz(): BelongsTo
     {
-        return $this->belongsTo(Quiz::class, 'lesson_id');
+        return $this->belongsTo(Quiz::class, 'quiz_id');
     }
 
     public function enrollment(): BelongsTo

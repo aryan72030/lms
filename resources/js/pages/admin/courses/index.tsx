@@ -1,10 +1,24 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { Head, Link, router } from '@inertiajs/react';
-import { Edit, CheckCircle, XCircle, Archive, RotateCcw, Plus, X, Trash2, Send, Eye, FileText } from 'lucide-react';
+import {
+    Edit,
+    CheckCircle,
+    XCircle,
+    Archive,
+    RotateCcw,
+    Plus,
+    X,
+    Trash2,
+    Send,
+    Eye,
+    FileText,
+    Search,
+} from 'lucide-react';
 import React, { useState } from 'react';
 import { ActionButton } from '@/components/ui/action-button';
 import { ActionButtonGroup } from '@/components/ui/action-button-group';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,7 +33,10 @@ interface Course {
     slug: string;
     description: string;
     objectives?: string;
+    requirements?: string[] | string;
+    target_audience?: string[] | string;
     price: number;
+    access_duration: number;
     duration_hours: number;
     difficulty_level: string;
     status: string;
@@ -48,7 +65,7 @@ interface Course {
 }
 
 interface Props {
-    courses: {
+    courses?: {
         data: Course[];
         total: number;
         links?: Array<{
@@ -57,14 +74,14 @@ interface Props {
             active: boolean;
         }>;
     };
-    filters: {
+    filters?: {
         search?: string;
         status?: string;
     };
-    statuses: string[];
-    categories: Array<{ id: number; name: string }>;
-    instructors: Array<{ id: number; name: string; email: string }>;
-    difficultyLevels: string[];
+    statuses?: string[];
+    categories?: Array<{ id: number; name: string }>;
+    instructors?: Array<{ id: number; name: string; email: string }>;
+    difficultyLevels?: string[];
 }
 
 interface CourseFormData {
@@ -82,7 +99,14 @@ interface ValidationErrors {
     [key: string]: string[] | undefined;
 }
 
-export default function AdminCoursesIndex({ courses, filters, statuses, categories, instructors, difficultyLevels }: Props) {
+export default function AdminCoursesIndex({
+    courses,
+    filters = {},
+    statuses = [],
+    categories = [],
+    instructors = [],
+    difficultyLevels = [],
+}: Props) {
     const [search, setSearch] = useState(filters.search || '');
     const [statusFilter, setStatusFilter] = useState(filters.status || '');
     const [loading, setLoading] = useState<number | null>(null);
@@ -90,24 +114,39 @@ export default function AdminCoursesIndex({ courses, filters, statuses, categori
     const [showViewModal, setShowViewModal] = useState<Course | null>(null);
     const [courseToApprove, setCourseToApprove] = useState<Course | null>(null);
     const [courseToArchive, setCourseToArchive] = useState<Course | null>(null);
-    const [courseToRepublish, setCourseToRepublish] = useState<Course | null>(null);
-    const [courseToForceSubmit, setCourseToForceSubmit] = useState<Course | null>(null);
+    const [courseToRepublish, setCourseToRepublish] = useState<Course | null>(
+        null,
+    );
+    const [courseToForceSubmit, setCourseToForceSubmit] =
+        useState<Course | null>(null);
     const [courseToDelete, setCourseToDelete] = useState<Course | null>(null);
     const [rejectionReason, setRejectionReason] = useState('');
     const courseMessages = useActionMessages('Course');
 
+    const safeCourses = {
+        data: courses?.data || [],
+        total: courses?.total || 0,
+        links: courses?.links || [],
+    };
+
     const handleSearch = () => {
-        router.get('/admin/courses', {
-            search: search || undefined,
-            status: statusFilter || undefined,
-        }, {
-            preserveState: true,
-            replace: true,
-        });
+        router.get(
+            '/admin/courses',
+            {
+                search: search || undefined,
+                status: statusFilter || undefined,
+            },
+            {
+                preserveState: true,
+                replace: true,
+            },
+        );
     };
 
     const getCsrfToken = () => {
-        const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        const token = document
+            .querySelector('meta[name="csrf-token"]')
+            ?.getAttribute('content');
 
         return token || '';
     };
@@ -118,13 +157,16 @@ export default function AdminCoursesIndex({ courses, filters, statuses, categori
         setLoading(courseToApprove.id);
 
         try {
-            const response = await fetch(`/admin/courses/${courseToApprove.id}/approve`, {
-                method: 'PATCH',
-                headers: {
-                    'X-CSRF-TOKEN': getCsrfToken(),
-                    'Accept': 'application/json',
+            const response = await fetch(
+                `/admin/courses/${courseToApprove.id}/approve`,
+                {
+                    method: 'PATCH',
+                    headers: {
+                        'X-CSRF-TOKEN': getCsrfToken(),
+                        Accept: 'application/json',
+                    },
                 },
-            });
+            );
 
             const data = await response.json();
 
@@ -144,21 +186,24 @@ export default function AdminCoursesIndex({ courses, filters, statuses, categori
 
     const handleReject = async () => {
         if (!showRejectModal || !rejectionReason.trim()) {
-return;
-}
+            return;
+        }
 
         setLoading(showRejectModal.id);
 
         try {
-            const response = await fetch(`/admin/courses/${showRejectModal.id}/reject`, {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': getCsrfToken(),
-                    'Accept': 'application/json',
+            const response = await fetch(
+                `/admin/courses/${showRejectModal.id}/reject`,
+                {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': getCsrfToken(),
+                        Accept: 'application/json',
+                    },
+                    body: JSON.stringify({ reason: rejectionReason }),
                 },
-                body: JSON.stringify({ reason: rejectionReason }),
-            });
+            );
 
             const data = await response.json();
 
@@ -183,13 +228,16 @@ return;
         setLoading(courseToArchive.id);
 
         try {
-            const response = await fetch(`/admin/courses/${courseToArchive.id}/archive`, {
-                method: 'PATCH',
-                headers: {
-                    'X-CSRF-TOKEN': getCsrfToken(),
-                    'Accept': 'application/json',
+            const response = await fetch(
+                `/admin/courses/${courseToArchive.id}/archive`,
+                {
+                    method: 'PATCH',
+                    headers: {
+                        'X-CSRF-TOKEN': getCsrfToken(),
+                        Accept: 'application/json',
+                    },
                 },
-            });
+            );
 
             const data = await response.json();
 
@@ -213,13 +261,16 @@ return;
         setLoading(courseToRepublish.id);
 
         try {
-            const response = await fetch(`/admin/courses/${courseToRepublish.id}/republish`, {
-                method: 'PATCH',
-                headers: {
-                    'X-CSRF-TOKEN': getCsrfToken(),
-                    'Accept': 'application/json',
+            const response = await fetch(
+                `/admin/courses/${courseToRepublish.id}/republish`,
+                {
+                    method: 'PATCH',
+                    headers: {
+                        'X-CSRF-TOKEN': getCsrfToken(),
+                        Accept: 'application/json',
+                    },
                 },
-            });
+            );
 
             const data = await response.json();
 
@@ -243,13 +294,16 @@ return;
         setLoading(courseToForceSubmit.id);
 
         try {
-            const response = await fetch(`/admin/courses/${courseToForceSubmit.id}/force-submit`, {
-                method: 'PATCH',
-                headers: {
-                    'X-CSRF-TOKEN': getCsrfToken(),
-                    'Accept': 'application/json',
+            const response = await fetch(
+                `/admin/courses/${courseToForceSubmit.id}/force-submit`,
+                {
+                    method: 'PATCH',
+                    headers: {
+                        'X-CSRF-TOKEN': getCsrfToken(),
+                        Accept: 'application/json',
+                    },
                 },
-            });
+            );
 
             const data = await response.json();
 
@@ -273,13 +327,16 @@ return;
         setLoading(courseToDelete.id);
 
         try {
-            const response = await fetch(`/admin/courses/${courseToDelete.id}`, {
-                method: 'DELETE',
-                headers: {
-                    'X-CSRF-TOKEN': getCsrfToken(),
-                    'Accept': 'application/json',
+            const response = await fetch(
+                `/admin/courses/${courseToDelete.id}`,
+                {
+                    method: 'DELETE',
+                    headers: {
+                        'X-CSRF-TOKEN': getCsrfToken(),
+                        Accept: 'application/json',
+                    },
                 },
-            });
+            );
 
             const data = await response.json();
 
@@ -287,7 +344,7 @@ return;
                 courseMessages.success('delete');
                 window.location.reload();
             } else {
-                courseMessages.error('delete');
+                courseMessages.error('delete', data.message || 'Failed to delete course. Please try again.');
             }
         } catch (error) {
             courseMessages.error('delete');
@@ -298,14 +355,20 @@ return;
     };
 
     const getStatusBadgeClass = (color: string) => {
-        const baseClass = 'inline-flex px-2 py-1 text-xs font-semibold rounded-full';
+        const baseClass =
+            'inline-flex px-2 py-1 text-xs font-semibold rounded-full';
 
         switch (color) {
-            case 'gray': return `${baseClass} bg-gray-100 text-gray-800`;
-            case 'yellow': return `${baseClass} bg-yellow-100 text-yellow-800`;
-            case 'green': return `${baseClass} bg-green-100 text-green-800`;
-            case 'red': return `${baseClass} bg-red-100 text-red-800`;
-            default: return `${baseClass} bg-gray-100 text-gray-800`;
+            case 'gray':
+                return `${baseClass} bg-gray-100 text-gray-800`;
+            case 'yellow':
+                return `${baseClass} bg-yellow-100 text-yellow-800`;
+            case 'green':
+                return `${baseClass} bg-green-100 text-green-800`;
+            case 'red':
+                return `${baseClass} bg-red-100 text-red-800`;
+            default:
+                return `${baseClass} bg-gray-100 text-gray-800`;
         }
     };
 
@@ -316,32 +379,42 @@ return;
             label: 'Course',
             render: (value: string, course: Course) => (
                 <div>
-                    <div className="text-sm font-medium text-gray-900">{course.title}</div>
-                    <div className="text-sm text-gray-500">{course.difficulty_level} • {course.duration_hours}h</div>
+                    <div className="text-sm font-medium text-gray-900">
+                        {course.title}
+                    </div>
+                    <div className="text-sm text-gray-500">
+                        {course.difficulty_level} • {course.duration_hours}h
+                    </div>
                     {course.rejection_reason && (
-                        <div className="text-xs text-red-600 mt-1">
+                        <div className="mt-1 text-xs text-red-600">
                             Rejected: {course.rejection_reason}
                         </div>
                     )}
                 </div>
-            )
+            ),
         },
         {
             key: 'instructor',
             label: 'Instructor',
             render: (value: any, course: Course) => (
                 <div>
-                    <div className="text-sm font-medium text-gray-900">{course.instructor.name}</div>
-                    <div className="text-xs text-gray-500">{course.instructor.email}</div>
+                    <div className="text-sm font-medium text-gray-900">
+                        {course.instructor.name}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                        {course.instructor.email}
+                    </div>
                 </div>
-            )
+            ),
         },
         {
             key: 'category',
             label: 'Category',
             render: (value: any, course: Course) => (
-                <span className="text-sm text-gray-500">{course.category.name}</span>
-            )
+                <span className="text-sm text-gray-500">
+                    {course.category.name}
+                </span>
+            ),
         },
         {
             key: 'status',
@@ -352,19 +425,19 @@ return;
                         {course.status_label}
                     </span>
                     {course.submitted_at && (
-                        <div className="text-xs text-gray-500 mt-1">
+                        <div className="mt-1 text-xs text-gray-500">
                             Submitted: {course.submitted_at}
                         </div>
                     )}
                 </div>
-            )
+            ),
         },
         {
             key: 'price',
             label: 'Price',
             render: (value: number) => (
                 <span className="text-sm text-gray-500">${value}</span>
-            )
+            ),
         },
         {
             key: 'actions',
@@ -398,7 +471,7 @@ return;
                             title="Submit for Review"
                         />
                     )}
-                    
+
                     {course.can_be_approved && (
                         <>
                             <ActionButton
@@ -417,7 +490,7 @@ return;
                             />
                         </>
                     )}
-                    
+
                     {course.status === 'Published' && (
                         <ActionButton
                             variant="archive"
@@ -427,7 +500,7 @@ return;
                             title="Archive Course"
                         />
                     )}
-                    
+
                     {course.can_be_republished && (
                         <ActionButton
                             variant="approve"
@@ -437,7 +510,7 @@ return;
                             title="Republish Course"
                         />
                     )}
-                    
+
                     <ActionButton
                         variant="delete"
                         icon={Trash2}
@@ -446,102 +519,119 @@ return;
                         title="Delete Course"
                     />
                 </ActionButtonGroup>
-            )
-        }
+            ),
+        },
     ];
 
     return (
-        <AppLayout breadcrumbs={[
-            { title: 'Dashboard', href: '/admin/dashboard' },
-            { title: 'Course Management', href: '/admin/courses' }
-        ]}>
+        <AppLayout
+            breadcrumbs={[
+                { title: 'Dashboard', href: '/admin/dashboard' },
+                { title: 'Course Management', href: '/admin/courses' },
+            ]}
+        >
             <Head title="Course Management" />
-            
+
             <div className="space-y-6">
                 {/* Header */}
                 <div className="flex items-center justify-between">
                     <div>
-                        <h1 className="text-3xl font-bold text-gray-900">Course Management</h1>
-                        <p className="text-gray-600">Review and manage courses across the platform</p>
+                        <h1 className="page-title text-gray-900">
+                            Course Management
+                        </h1>
+                        <p className="text-gray-600">
+                            Review and manage courses across the platform
+                        </p>
                     </div>
                     <Link href="/admin/courses/create">
                         <Button variant="create">
-                            <Plus className="h-4 w-4 mr-2" />
+                            <Plus className="mr-2 h-4 w-4" />
                             Create Course
                         </Button>
                     </Link>
                 </div>
 
                 {/* Search */}
-                <div className="bg-white shadow rounded-lg p-4">
+                <div className="rounded-lg bg-white p-4 shadow">
                     <div className="flex gap-4">
                         <input
                             type="text"
                             placeholder="Search courses..."
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
-                            onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                            className="flex-1 border border-gray-300 rounded-md px-3 py-2"
+                            onKeyPress={(e) =>
+                                e.key === 'Enter' && handleSearch()
+                            }
+                            className="flex-1 rounded-md border border-gray-300 px-3 py-2"
                         />
                         <select
                             value={statusFilter}
                             onChange={(e) => setStatusFilter(e.target.value)}
-                            className="border border-gray-300 rounded-md px-3 py-2"
+                            className="rounded-md border border-gray-300 px-3 py-2"
                         >
                             <option value="">All Statuses</option>
                             {statuses.map((status: string) => (
-                                <option key={status} value={status}>{status}</option>
+                                <option key={status} value={status}>
+                                    {status}
+                                </option>
                             ))}
                         </select>
-                        <button
-                            onClick={handleSearch}
-                            className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md"
-                        >
+                        <Button onClick={handleSearch}>
+                            <Search className="mr-2 h-4 w-4" />
                             Search
-                        </button>
-                        <button
+                        </Button>
+                        <Button
+                            variant="outline"
                             onClick={() => {
                                 setSearch('');
                                 setStatusFilter('');
                                 router.get('/admin/courses');
                             }}
-                            className="bg-gray-300 hover:bg-gray-400 text-gray-700 px-4 py-2 rounded-md"
                         >
-                            Reset
-                        </button>
+                            Reset Filters
+                        </Button>
                     </div>
                 </div>
 
                 {/* Courses Table */}
-                <DataTable
-                    columns={columns}
-                    data={courses.data}
-                    title={`Courses (${courses.total})`}
-                    emptyMessage="No courses found"
-                    paginationLinks={courses.links}
-                    onPageChange={(url) => router.get(url)}
-                    emptyAction={
-                        <Link href="/admin/courses/create">
-                            <Button variant="create">
-                                Create First Course
-                            </Button>
-                        </Link>
-                    }
-                />
+                <Card>
+                    <CardContent className="p-0">
+                        <DataTable
+                            columns={columns}
+                            data={safeCourses.data}
+                            title={`Courses (${safeCourses.total})`}
+                            emptyMessage="No courses found"
+                            paginationLinks={safeCourses.links}
+                            onPageChange={(url) => router.get(url)}
+                            emptyAction={
+                                <Link href="/admin/courses/create">
+                                    <Button variant="create">
+                                        Create First Course
+                                    </Button>
+                                </Link>
+                            }
+                        />
+                    </CardContent>
+                </Card>
             </div>
 
             {/* Simple Course Details Modal */}
-            <Dialog.Root open={!!showViewModal} onOpenChange={() => setShowViewModal(null)}>
+            <Dialog.Root
+                open={!!showViewModal}
+                onOpenChange={() => setShowViewModal(null)}
+            >
                 <Dialog.Portal>
-                    <Dialog.Overlay className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-md data-[state=open]:animate-overlay-show" />
-                    <Dialog.Content className="fixed top-1/2 left-1/2 z-[1001] w-[90vw] max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white shadow-lg data-[state=open]:animate-content-show focus:outline-none max-h-[90vh] overflow-y-auto">
+                    <Dialog.Overlay className="data-[state=open]:animate-overlay-show fixed inset-0 z-[1000] bg-black/60 backdrop-blur-md" />
+                    <Dialog.Content className="data-[state=open]:animate-content-show fixed top-1/2 left-1/2 z-[1001] max-h-[90vh] w-[90vw] max-w-2xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl bg-white shadow-lg focus:outline-none">
                         {/* Modal Header */}
-                        <div className="flex items-center justify-between p-6 border-b sticky top-0 bg-white z-10">
-                            <Dialog.Title className="text-lg font-semibold text-gray-900">Course Details</Dialog.Title>
+                        <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white p-6">
+                            <Dialog.Title className="text-lg font-semibold text-gray-900">
+                                Course Details
+                            </Dialog.Title>
                             <Dialog.Close asChild>
                                 <button
                                     type="button"
-                                    className="text-gray-400 hover:text-gray-600 p-1"
+                                    className="p-1 text-gray-400 hover:text-gray-600"
                                 >
                                     <X className="h-5 w-5" />
                                 </button>
@@ -549,65 +639,142 @@ return;
                         </div>
 
                         {/* Modal Body */}
-                        <div className="p-6 space-y-4">
+                        <div className="space-y-4 p-6">
                             <div>
-                                <h4 className="text-lg font-medium text-gray-900">{showViewModal?.title}</h4>
-                                <p className="text-sm text-gray-500 mt-1">{showViewModal?.category.name}</p>
+                                <h4 className="text-lg font-medium text-gray-900">
+                                    {showViewModal?.title}
+                                </h4>
+                                <p className="mt-1 text-sm text-gray-500">
+                                    {showViewModal?.category.name}
+                                </p>
                             </div>
-                            
+
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <span className="text-sm font-medium text-gray-700">Instructor:</span>
-                                    <p className="text-sm text-gray-900">{showViewModal?.instructor.name}</p>
+                                    <span className="text-sm font-medium text-gray-700">
+                                        Instructor:
+                                    </span>
+                                    <p className="text-sm text-gray-900">
+                                        {showViewModal?.instructor.name}
+                                    </p>
                                 </div>
                                 <div>
-                                    <span className="text-sm font-medium text-gray-700">Price:</span>
-                                    <p className="text-sm text-gray-900">${showViewModal?.price}</p>
+                                    <span className="text-sm font-medium text-gray-700">
+                                        Price:
+                                    </span>
+                                    <p className="text-sm text-gray-900">
+                                        ${showViewModal?.price}
+                                    </p>
                                 </div>
                                 <div>
-                                    <span className="text-sm font-medium text-gray-700">Duration:</span>
-                                    <p className="text-sm text-gray-900">{showViewModal?.duration_hours} hours</p>
+                                    <span className="text-sm font-medium text-gray-700">
+                                        Duration:
+                                    </span>
+                                    <p className="text-sm text-gray-900">
+                                        {showViewModal?.duration_hours} hours
+                                    </p>
                                 </div>
                                 <div>
-                                    <span className="text-sm font-medium text-gray-700">Difficulty:</span>
-                                    <p className="text-sm text-gray-900">{showViewModal?.difficulty_level}</p>
+                                    <span className="text-sm font-medium text-gray-700">
+                                        Difficulty:
+                                    </span>
+                                    <p className="text-sm text-gray-900">
+                                        {showViewModal?.difficulty_level}
+                                    </p>
                                 </div>
                                 <div>
-                                    <span className="text-sm font-medium text-gray-700">Status:</span>
-                                    <span className={getStatusBadgeClass(showViewModal?.status_color || 'gray')}>
+                                    <span className="text-sm font-medium text-gray-700">
+                                        Access Duration:
+                                    </span>
+                                    <p className="text-sm text-gray-900">
+                                        {showViewModal?.access_duration && showViewModal.access_duration > 0 
+                                            ? `${showViewModal.access_duration} days` 
+                                            : 'Lifetime'}
+                                    </p>
+                                </div>
+                                <div>
+                                    <span className="text-sm font-medium text-gray-700">
+                                        Status:
+                                    </span>
+                                    <span
+                                        className={getStatusBadgeClass(
+                                            showViewModal?.status_color ||
+                                                'gray',
+                                        )}
+                                    >
                                         {showViewModal?.status_label}
                                     </span>
                                 </div>
                             </div>
-                            
-                            <div>
-                                <span className="text-sm font-medium text-gray-700">Description:</span>
-                                <p className="text-sm text-gray-900 mt-1">{showViewModal?.description}</p>
+
+                            <div className="space-y-4">
+                                <div className="rounded-xl border bg-slate-50 p-4">
+                                     <h4 className="mb-2 text-xs font-black tracking-widest text-slate-400 uppercase">
+                                         Description
+                                     </h4>
+                                     <div className="text-sm leading-relaxed text-slate-700 whitespace-pre-wrap break-words">
+                                         {showViewModal?.description}
+                                     </div>
+                                 </div>
+
+                                 {showViewModal?.objectives && (
+                                     <div className="rounded-xl border bg-slate-50 p-4">
+                                         <h4 className="mb-2 text-xs font-black tracking-widest text-slate-400 uppercase">
+                                             Objectives
+                                         </h4>
+                                         <div className="text-sm leading-relaxed text-slate-700 whitespace-pre-wrap break-words">
+                                             {showViewModal.objectives}
+                                         </div>
+                                     </div>
+                                 )}
+
+                                 {showViewModal?.requirements && (
+                                     <div className="rounded-xl border bg-slate-50 p-4">
+                                         <h4 className="mb-2 text-xs font-black tracking-widest text-slate-400 uppercase">
+                                             Requirements
+                                         </h4>
+                                         <div className="text-sm leading-relaxed text-slate-700 whitespace-pre-wrap break-words">
+                                             {Array.isArray(showViewModal.requirements) 
+                                                 ? showViewModal.requirements.join('\n') 
+                                                 : showViewModal.requirements}
+                                         </div>
+                                     </div>
+                                 )}
                             </div>
-                            
+
                             {showViewModal?.rejection_reason && (
-                                <div className="bg-red-50 border border-red-200 rounded-md p-3">
-                                    <span className="text-sm font-medium text-red-700">Rejection Reason:</span>
-                                    <p className="text-sm text-red-900 mt-1">{showViewModal.rejection_reason}</p>
+                                <div className="rounded-md border border-red-200 bg-red-50 p-3">
+                                    <span className="text-sm font-medium text-red-700">
+                                        Rejection Reason:
+                                    </span>
+                                    <p className="mt-1 text-sm text-red-900">
+                                        {showViewModal.rejection_reason}
+                                    </p>
                                 </div>
                             )}
-                            
+
                             <div className="text-xs text-gray-500">
                                 Created: {showViewModal?.created_at}
                                 {showViewModal?.submitted_at && (
-                                    <span className="ml-4">Submitted: {showViewModal.submitted_at}</span>
+                                    <span className="ml-4">
+                                        Submitted: {showViewModal.submitted_at}
+                                    </span>
                                 )}
                                 {showViewModal?.approved_at && (
-                                    <span className="ml-4">Approved: {showViewModal.approved_at}</span>
+                                    <span className="ml-4">
+                                        Approved: {showViewModal.approved_at}
+                                    </span>
                                 )}
                                 {showViewModal?.published_at && (
-                                    <span className="ml-4">Published: {showViewModal.published_at}</span>
+                                    <span className="ml-4">
+                                        Published: {showViewModal.published_at}
+                                    </span>
                                 )}
                             </div>
                         </div>
 
                         {/* Modal Footer */}
-                        <div className="flex items-center justify-end gap-3 p-6 border-t bg-gray-50 rounded-b-2xl sticky bottom-0">
+                        <div className="sticky bottom-0 flex items-center justify-end gap-3 rounded-b-2xl border-t bg-gray-50 p-6">
                             <Button
                                 type="button"
                                 variant="outline"
@@ -621,24 +788,30 @@ return;
             </Dialog.Root>
 
             {/* Reject Modal */}
-            <Dialog.Root open={!!showRejectModal} onOpenChange={() => {
-                setShowRejectModal(null);
-                setRejectionReason('');
-            }}>
+            <Dialog.Root
+                open={!!showRejectModal}
+                onOpenChange={() => {
+                    setShowRejectModal(null);
+                    setRejectionReason('');
+                }}
+            >
                 <Dialog.Portal>
-                    <Dialog.Overlay className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-md data-[state=open]:animate-overlay-show" />
-                    <Dialog.Content className="fixed top-1/2 left-1/2 z-[1001] w-[90vw] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white p-6 shadow-lg data-[state=open]:animate-content-show focus:outline-none">
-                        <Dialog.Title className="text-lg font-semibold text-gray-900 mb-4">
+                    <Dialog.Overlay className="data-[state=open]:animate-overlay-show fixed inset-0 z-[1000] bg-black/60 backdrop-blur-md" />
+                    <Dialog.Content className="data-[state=open]:animate-content-show fixed top-1/2 left-1/2 z-[1001] w-[90vw] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white p-6 shadow-lg focus:outline-none">
+                        <Dialog.Title className="mb-4 text-lg font-semibold text-gray-900">
                             Reject Course: {showRejectModal?.title}
                         </Dialog.Title>
                         <div className="mb-4">
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Rejection Reason <span className="text-red-500">*</span>
+                            <label className="mb-2 block text-sm font-medium text-gray-700">
+                                Rejection Reason{' '}
+                                <span className="text-red-500">*</span>
                             </label>
                             <textarea
                                 value={rejectionReason}
-                                onChange={(e) => setRejectionReason(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                                onChange={(e) =>
+                                    setRejectionReason(e.target.value)
+                                }
+                                className="w-full rounded-md border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-red-500 focus:outline-none"
                                 rows={4}
                                 placeholder="Please provide a reason for rejection..."
                                 required
@@ -650,16 +823,21 @@ return;
                                     setShowRejectModal(null);
                                     setRejectionReason('');
                                 }}
-                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                                className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={handleReject}
-                                disabled={!rejectionReason.trim() || loading === showRejectModal?.id}
-                                className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 disabled:opacity-50"
+                                disabled={
+                                    !rejectionReason.trim() ||
+                                    loading === showRejectModal?.id
+                                }
+                                className="rounded-md border border-transparent bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
                             >
-                                {loading === showRejectModal?.id ? 'Rejecting...' : 'Reject Course'}
+                                {loading === showRejectModal?.id
+                                    ? 'Rejecting...'
+                                    : 'Reject Course'}
                             </button>
                         </div>
                         <Dialog.Close asChild>
